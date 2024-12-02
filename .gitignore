@@ -1,0 +1,23 @@
+# Logs
+*.log
+npm-debug.log*
+combined.log
+error.log
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Dependencies
+node_modules/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# SSL Certificates
+*.pem
+*.key
+*.crt

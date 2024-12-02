@@ -1,0 +1,25 @@
+{
+  "name": "5years",
+  "version": "1.0.0",
+  "main": "server.js",
+  "description": "A 5-year collaborative loading experiment",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "dev": "cross-env NODE_ENV=development node server.js"
+  },
+  "keywords": ["websocket", "interactive", "loading", "experiment"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cross-env": "^7.0.3",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "uuid": "^11.0.3",
+    "winston": "^3.17.0",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
