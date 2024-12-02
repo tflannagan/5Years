@@ -23,7 +23,7 @@ const HEARTBEAT_INTERVAL = 30000;
 const CLEANUP_INTERVAL = 60000;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : ["https://yourdomain.com"];
+  : ["http://5years-production.up.railway.app"];
 
 const server = require("http").createServer();
 
