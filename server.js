@@ -109,7 +109,6 @@ wss.on('connection', (ws, req) => {
                         sessionId: clientId
                     }));
                     
-                    // Send current avatar positions to new client
                     const avatars = Array.from(clients.entries()).map(([id, client]) => ({
                         id,
                         x: client.x || 0
@@ -119,7 +118,6 @@ wss.on('connection', (ws, req) => {
                         avatars
                     }));
                     
-                    // Broadcast new client to others
                     broadcastToOthers(JSON.stringify({
                         type: 'position',
                         sessionId: clientId,
