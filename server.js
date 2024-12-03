@@ -27,7 +27,13 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 
 const server = require("http").createServer();
 
+const express = require("express");
+const app = express();
+
 const wss = new WebSocket.Server({ server });
+
+// Serve static files from the public directory
+app.use(express.static("public"));
 const clients = new Map();
 
 const limiter = rateLimit({
