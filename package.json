@@ -4,9 +4,10 @@
   "main": "server.js",
   "description": "A 5-year collaborative loading experiment",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "cross-env NODE_ENV=development node server.js"
+    "dev": "cross-env NODE_ENV=development node server.js",
+    "postinstall": "npm run build",
+    "build": "echo \"No build step required\""
   },
   "keywords": ["websocket", "interactive", "loading", "experiment"],
   "author": "",
@@ -18,9 +19,19 @@
     "helmet": "^8.0.0",
     "uuid": "^11.0.3",
     "winston": "^3.17.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "path": "^0.12.7",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tflannagan/5years.git"
+  },
+  "private": true
 }
