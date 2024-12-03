@@ -58,7 +58,6 @@ app.get("/health", (req, res) => {
 // WebSocket setup
 const wss = new WebSocket.Server({
   server,
-  path: "/ws",
 });
 
 const clients = new Map();

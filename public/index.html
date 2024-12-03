@@ -274,7 +274,7 @@
             const MAX_RECONNECT_ATTEMPTS = 5;
             const RECONNECT_DELAY = 1000;
             const WS_URL = window.location.protocol === 'https:'
-            ? `wss://${window.location.host}/ws` 
+            ? `wss://${window.location.host}` 
             : `ws://localhost:8080/ws`; 
 
             let ws;
