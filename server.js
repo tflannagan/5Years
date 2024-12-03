@@ -5,8 +5,16 @@ const winston = require("winston");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
+const path = require("path");
 
-// Configure logger
+const MAX_CONNECTIONS_PER_IP = 3;
+const MIN_MESSAGE_INTERVAL = 100;
+const MAX_CONNECTION_TIME = 4 * 60 * 60 * 1000;
+const SAFE_EMOJIS = ["😊", "🎉", "❤️", "✨", "🤖"];
+
+const ipConnections = new Map();
+const messageTimestamps = new Map();
+
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.json(),
@@ -17,26 +25,47 @@ const logger = winston.createLogger({
   ],
 });
 
-// Constants
 const PORT = process.env.PORT || 8080;
 const MAX_CONNECTIONS = 10000;
 const MAX_MESSAGE_SIZE = 1024;
 const HEARTBEAT_INTERVAL = 30000;
-const CLEANUP_INTERVAL = 60000;
+const CLEANUP_INTERVAL = 30000;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
   : ["https://5years-production.up.railway.app"];
 
-// Express app setup
 const app = express();
 const server = require("http").createServer(app);
-const path = require("path");
-// Middleware
 
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// CORS middleware
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests from this IP",
+});
+
+app.use(limiter);
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        connectSrc: ["'self'", "wss:", "ws:"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        workerSrc: ["'self'", "blob:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "same-site" },
+  })
+);
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (validateOrigin(origin)) {
@@ -50,49 +79,51 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        connectSrc: ["'self'", "wss:", "ws:"],
-        imgSrc: ["'self'", "data:", "blob:"],
-        workerSrc: ["'self'", "blob:"],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-  })
-);
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
-
-// WebSocket setup
 const wss = new WebSocket.Server({
   server,
+  verifyClient: ({ origin, req }, callback) => {
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    const currentConnections = ipConnections.get(ip) || 0;
+    if (currentConnections >= MAX_CONNECTIONS_PER_IP) {
+      callback(false, 429, "Too many connections");
+      return;
+    }
+    callback(true);
+  },
 });
 
 const clients = new Map();
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-});
-
-// Utility functions
 function generateSessionId() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+function validateMessage(message) {
+  if (!message || message.length > MAX_MESSAGE_SIZE) return false;
+  try {
+    const data = JSON.parse(message);
+    return !!data.type;
+  } catch {
+    return false;
+  }
+}
+
+function validateEmoji(emoji) {
+  return SAFE_EMOJIS.includes(emoji);
+}
+
+function validateOrigin(origin) {
+  return (
+    process.env.NODE_ENV === "development" || ALLOWED_ORIGINS.includes(origin)
+  );
 }
 
 function broadcastToOthers(message, excludeId) {
@@ -117,14 +148,13 @@ function broadcastViewerCount() {
   });
 }
 
-function validateOrigin(origin) {
-  return (
-    process.env.NODE_ENV === "development" || ALLOWED_ORIGINS.includes(origin)
-  );
-}
-
-// WebSocket connection handling
 wss.on("connection", (ws, req) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  ipConnections.set(ip, (ipConnections.get(ip) || 0) + 1);
+
+  let clientId = null;
+  const connectionTime = Date.now();
+
   if (!validateOrigin(req.headers.origin)) {
     ws.terminate();
     logger.warn(
@@ -139,13 +169,15 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  let clientId = null;
-
   ws.on("message", (message) => {
     try {
-      if (message.length > MAX_MESSAGE_SIZE) {
+      const now = Date.now();
+      const lastMessage = messageTimestamps.get(clientId) || 0;
+      if (now - lastMessage < MIN_MESSAGE_INTERVAL) return;
+      messageTimestamps.set(clientId, now);
+
+      if (!validateMessage(message)) {
         ws.terminate();
-        logger.warn(`Message size exceeded from client ${clientId}`);
         return;
       }
 
@@ -157,27 +189,18 @@ wss.on("connection", (ws, req) => {
           clientId = generateSessionId();
           clients.set(clientId, {
             ws,
-            lastSeen: Date.now(),
-            ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+            lastSeen: now,
+            connectTime: connectionTime,
+            ip: ip,
             x: data.x || Math.random() * 500,
           });
-          ws.send(
-            JSON.stringify({
-              type: "init",
-              sessionId: clientId,
-            })
-          );
+          ws.send(JSON.stringify({ type: "init", sessionId: clientId }));
 
           const avatars = Array.from(clients.entries()).map(([id, client]) => ({
             id,
             x: client.x || 0,
           }));
-          ws.send(
-            JSON.stringify({
-              type: "sync",
-              avatars,
-            })
-          );
+          ws.send(JSON.stringify({ type: "sync", avatars }));
 
           broadcastToOthers(
             JSON.stringify({
@@ -187,7 +210,6 @@ wss.on("connection", (ws, req) => {
             }),
             clientId
           );
-
           broadcastViewerCount();
           break;
 
@@ -197,8 +219,8 @@ wss.on("connection", (ws, req) => {
             const oldX = clients.get(clientId).x;
             clients.set(clientId, {
               ws,
-              lastSeen: Date.now(),
-              ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+              lastSeen: now,
+              ip: ip,
               x: oldX,
             });
             broadcastViewerCount();
@@ -206,16 +228,11 @@ wss.on("connection", (ws, req) => {
             clientId = generateSessionId();
             clients.set(clientId, {
               ws,
-              lastSeen: Date.now(),
-              ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+              lastSeen: now,
+              ip: ip,
               x: Math.random() * 500,
             });
-            ws.send(
-              JSON.stringify({
-                type: "init",
-                sessionId: clientId,
-              })
-            );
+            ws.send(JSON.stringify({ type: "init", sessionId: clientId }));
             broadcastViewerCount();
           }
           break;
@@ -236,6 +253,7 @@ wss.on("connection", (ws, req) => {
 
         case "emotion":
           if (clientId && clients.has(clientId)) {
+            if (!validateEmoji(data.emoji)) return;
             broadcastToOthers(
               JSON.stringify({
                 type: "emotion",
@@ -249,7 +267,7 @@ wss.on("connection", (ws, req) => {
 
         case "heartbeat":
           if (clientId && clients.has(clientId)) {
-            clients.get(clientId).lastSeen = Date.now();
+            clients.get(clientId).lastSeen = now;
           }
           break;
 
@@ -276,6 +294,10 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => {
     if (clientId && clients.has(clientId)) {
       clients.delete(clientId);
+      ipConnections.set(ip, ipConnections.get(ip) - 1);
+      if (ipConnections.get(ip) <= 0) {
+        ipConnections.delete(ip);
+      }
       broadcastToOthers(
         JSON.stringify({
           type: "disconnect",
@@ -296,12 +318,15 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// Cleanup interval
 setInterval(() => {
   const now = Date.now();
   clients.forEach((client, id) => {
-    if (now - client.lastSeen > CLEANUP_INTERVAL) {
+    if (
+      now - client.lastSeen > CLEANUP_INTERVAL ||
+      now - client.connectTime > MAX_CONNECTION_TIME
+    ) {
       clients.delete(id);
+      client.ws.close();
       broadcastToOthers(
         JSON.stringify({
           type: "disconnect",
@@ -310,12 +335,11 @@ setInterval(() => {
         id
       );
       broadcastViewerCount();
-      logger.info(`Cleaned up stale connection: ${id}`);
+      logger.info(`Cleaned up connection: ${id}`);
     }
   });
 }, HEARTBEAT_INTERVAL);
 
-// Graceful shutdown handling
 process.on("SIGTERM", () => {
   logger.info("SIGTERM received. Closing HTTP server...");
   server.close(() => {
@@ -338,7 +362,6 @@ process.on("SIGINT", () => {
   });
 });
 
-// Error handling
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught Exception:", err);
   setTimeout(() => {
@@ -350,7 +373,6 @@ process.on("unhandledRejection", (reason, promise) => {
   logger.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-// Start server
 server.listen(PORT, "0.0.0.0", () => {
   logger.info(`Server running on port ${PORT}`);
 });
