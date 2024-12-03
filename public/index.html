@@ -269,504 +269,458 @@
     </div>
 
     <script>
-        const START_DATE = new Date('2024-12-02').getTime();
-        const END_DATE = new Date('2029-12-02').getTime();
-        const TOTAL_DURATION = END_DATE - START_DATE;
-        const MAX_RECONNECT_ATTEMPTS = 5;
-        const RECONNECT_DELAY = 1000;
-        const WS_URL = window.location.protocol === 'https:'
-            ? `wss://${window.location.host}`
-            : `ws://localhost:8080`;
-        
-        let ws;
-        let reconnectAttempts = 0;
-        let sessionId = null;
-        let reconnectTimeout;
-        
-        const secureStorage = {
-            setItem(key, value) {
-                const encryptedValue = btoa(JSON.stringify({
-                    value,
-                    timestamp: Date.now()
-                }));
-                sessionStorage.setItem(key, encryptedValue);
-            },
-            getItem(key) {
-                const item = sessionStorage.getItem(key);
-                if (!item) return null;
+         const START_DATE = new Date('2024-12-02').getTime();
+            const END_DATE = new Date('2029-12-02').getTime();
+            const TOTAL_DURATION = END_DATE - START_DATE;
+            const MAX_RECONNECT_ATTEMPTS = 5;
+            const RECONNECT_DELAY = 1000;
+            const WS_URL = window.location.protocol === 'https:'
+            ? `wss://${window.location.host}` 
+            : `ws://localhost:8080/ws`; 
+
+            let ws;
+            let reconnectAttempts = 0;
+            let sessionId = null;
+            let reconnectTimeout;
+
+            function initWebSocket() {
                 try {
-                    const { value, timestamp } = JSON.parse(atob(item));
-                    if (Date.now() - timestamp > 86400000) {
-                        sessionStorage.removeItem(key);
-                        return null;
-                    }
-                    return value;
-                } catch {
-                    return null;
-                }
-            },
-            removeItem(key) {
-                sessionStorage.removeItem(key);
-            }
-        };
-        
-        const sanitizeEmoji = (emoji) => {
-            const emojiRegex = /^[\u{1F300}-\u{1F9FF}]$/u;
-            return emojiRegex.test(emoji) ? emoji : '👋';
-        };
-        
-        const sanitizeNumber = (num, min, max) => {
-            return Math.max(min, Math.min(max, Number(num) || 0));
-        };
-        
-       
-            
-        function initWebSocket() {
-            try {
-                ws = new WebSocket(WS_URL);
-        
-                ws.onopen = () => {
-                    reconnectAttempts = 0;
-                    const storedId = secureStorage.getItem('sessionId');
-                    
-                    if (storedId) {
-                        ws.send(JSON.stringify({
-                            type: 'reconnect',
-                            sessionId: storedId,
-                            timestamp: Date.now()
-                        }));
-                    } else {
+                    ws = new WebSocket(WS_URL);
+
+                    ws.onopen = () => {
+                        reconnectAttempts = 0;
                         ws.send(JSON.stringify({
                             type: 'init',
                             timestamp: Date.now()
                         }));
-                    }
-                };
-        
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-        
-                        switch (data.type) {
-                            case 'init':
-                                sessionId = data.sessionId;
-                                secureStorage.setItem('sessionId', sessionId);
-                                avatarSystem.addAvatar(sessionId);
-                                break;
-        
-                            case 'viewers':
-                                const count = sanitizeNumber(data.count, 0, 1000000);
-                                document.getElementById('viewers').textContent =
-                                    `Active Viewers: ${count}`;
-                                break;
-        
-                            case 'position':
-                                if (data.sessionId !== sessionId) {
-                                    const x = sanitizeNumber(data.x, 0, window.innerWidth);
-                                    avatarSystem.updateAvatar(data.sessionId, x);
-                                }
-                                break;
-        
-                            case 'emotion':
-                                if (data.sessionId !== sessionId) {
-                                    const sanitizedEmoji = sanitizeEmoji(data.emoji);
-                                    avatarSystem.showEmotion(data.sessionId, sanitizedEmoji);
-                                }
-                                break;
-        
-                            case 'disconnect':
-                                if (data.sessionId !== sessionId) {
-                                    avatarSystem.removeAvatar(data.sessionId);
-                                }
-                                break;
-        
-                            case 'sync':
-                                if (data.avatars && Array.isArray(data.avatars)) {
-                                    data.avatars.forEach(avatar => {
-                                        if (avatar.id !== sessionId) {
-                                            const x = sanitizeNumber(avatar.x, 0, window.innerWidth);
-                                            avatarSystem.updateAvatar(avatar.id, x);
-                                        }
-                                    });
-                                }
-                                break;
+                    };
+
+                    ws.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+
+                            switch (data.type) {
+                                case 'init':
+                                    sessionId = data.sessionId;
+                                    localStorage.setItem('sessionId', sessionId);
+                                    avatarSystem.addAvatar(sessionId);
+                                    break;
+
+                                case 'viewers':
+                                    document.getElementById('viewers').textContent =
+                                        `Active Viewers: ${data.count}`;
+                                    break;
+
+                                case 'position':
+                                    if (data.sessionId !== sessionId) {
+                                        avatarSystem.updateAvatar(data.sessionId, data.x);
+                                    }
+                                    break;
+
+                                case 'emotion':
+                                    avatarSystem.showEmotion(data.sessionId, data.emoji);
+                                    break;
+
+                                case 'disconnect':
+                                    if (data.sessionId !== sessionId) {
+                                        avatarSystem.removeAvatar(data.sessionId);
+                                    }
+                                    break;
+
+                                case 'sync':
+                                    if (data.avatars) {
+                                        data.avatars.forEach(avatar => {
+                                            if (avatar.id !== sessionId) {
+                                                avatarSystem.updateAvatar(avatar.id, avatar.x);
+                                            }
+                                        });
+                                    }
+                                    break;
+                            }
+                        } catch (error) {
+                            console.error('Message processing error:', error);
                         }
-                    } catch (error) {
-                        console.error('Message processing error:', error);
-                    }
-                };
-        
-                ws.onclose = () => {
-                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                        reconnectAttempts++;
-                        reconnectTimeout = setTimeout(initWebSocket,
-                            RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1));
-                    } else {
-                        secureStorage.removeItem('sessionId');
-                    }
-                };
-        
-                ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                };
-            } catch (error) {
-                console.error('WebSocket initialization error:', error);
-            }
-        }
-        
-        class Avatar {
-            constructor(id, x) {
-                this.id = id;
-                this.element = document.createElement('div');
-                this.element.className = 'avatar';
-                this.createAvatarBody();
-                this.x = sanitizeNumber(x, 0, window.innerWidth);
-                this.targetX = this.x;
-                this.element.style.left = `${this.x}px`;
-                this.isSelected = false;
-                this.setupClickHandler();
-                document.getElementById('avatars-container').appendChild(this.element);
-            }
-        
-            createAvatarBody() {
-                const svgContent = this.generateSanitizedSVG();
-                const container = document.createElement('div');
-                container.className = 'avatar-body';
-                container.innerHTML = svgContent;
-                this.element.appendChild(container);
-            }
-        
-            generateSanitizedSVG() {
-                const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
-                const color = colors[Math.floor(Math.random() * colors.length)];
-                return `<svg width="32" height="32" viewBox="0 0 32 32">
-                    <rect x="4" y="8" width="24" height="20" fill="${color}" rx="2"/>
-                    <circle cx="12" cy="16" r="3" fill="white"/>
-                    <circle cx="20" cy="16" r="3" fill="white"/>
-                    <circle cx="12" cy="16" r="1" fill="black"/>
-                    <circle cx="20" cy="16" r="1" fill="black"/>
-                    <rect x="14" y="22" width="4" height="2" fill="white"/>
-                </svg>`;
-            }
-        
-            setupClickHandler() {
-                this.element.addEventListener('click', (e) => {
-                    if (this.id === sessionId) {
-                        this.toggleSelect();
-                        e.stopPropagation();
-                    }
-                });
-            }
-        
-            toggleSelect() {
-                this.isSelected = !this.isSelected;
-                if (this.isSelected) {
-                    this.element.style.transform = 'scale(1.2)';
-                    const emojiPicker = document.getElementById('emoji-picker');
-                    emojiPicker.style.display = 'flex';
-                    const rect = this.element.getBoundingClientRect();
-                    emojiPicker.style.left = `${rect.left + (rect.width / 2)}px`;
-                    emojiPicker.style.bottom = '140px';
-                } else {
-                    this.element.style.transform = '';
-                    document.getElementById('emoji-picker').style.display = 'none';
+                    };
+
+                    ws.onclose = () => {
+                        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                            reconnectAttempts++;
+                            reconnectTimeout = setTimeout(initWebSocket,
+                                RECONNECT_DELAY * reconnectAttempts);
+                        }
+                    };
+                } catch (error) {
+                    console.error('WebSocket initialization error:', error);
                 }
             }
-        
-            moveTo(x) {
-                this.targetX = sanitizeNumber(x, 0, window.innerWidth - 32);
-                this.element.style.left = `${this.targetX}px`;
-            }
-        
-            showEmotion(emoji) {
-                const sanitizedEmoji = sanitizeEmoji(emoji);
-                const emotion = document.createElement('div');
-                emotion.className = 'avatar-emotion';
-                emotion.textContent = sanitizedEmoji;
-                this.element.appendChild(emotion);
-                emotion.style.animation = 'float-up 1s forwards';
-                setTimeout(() => emotion.remove(), 1000);
-            }
-        }
-        
-        class AvatarSystem {
-            constructor() {
-                this.avatars = new Map();
-                this.containerWidth = window.innerWidth;
-                this.moveSpeed = 5;
-                this.lastFrame = Date.now();
-                this.keys = new Set();
-                this.setupEventListeners();
-                this.animate();
-            }
-        
-            setupEventListeners() {
-                window.addEventListener('resize', () => {
-                    this.containerWidth = window.innerWidth;
-                });
-        
-                document.addEventListener('keydown', (e) => {
-                    this.keys.add(e.key.toLowerCase());
-                });
-        
-                document.addEventListener('keyup', (e) => {
-                    this.keys.delete(e.key.toLowerCase());
-                });
-        
-                document.addEventListener('click', (e) => {
-                    if (!e.target.closest('.avatar') && !e.target.closest('#emoji-picker')) {
-                        this.avatars.forEach(avatar => {
-                            if (avatar.isSelected) avatar.toggleSelect();
-                        });
-                    }
-                });
-        
-                const emojiPicker = document.getElementById('emoji-picker');
-                emojiPicker.style.display = 'none';
-                emojiPicker.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('emoji-btn')) {
-                        const emoji = sanitizeEmoji(e.target.textContent);
-                        this.broadcastEmotion(emoji);
-                        if (this.avatars.has(sessionId)) {
-                            const avatar = this.avatars.get(sessionId);
-                            avatar.showEmotion(emoji);
-                            avatar.toggleSelect();
-                        }
-                        e.stopPropagation();
-                    }
-                });
-            }
-        
-            animate() {
-                const now = Date.now();
-                const deltaTime = now - this.lastFrame;
-                this.lastFrame = now;
-        
-                if (sessionId && this.avatars.has(sessionId)) {
-                    const avatar = this.avatars.get(sessionId);
-                    let moved = false;
-                    const movement = this.moveSpeed * (deltaTime / 16);
-        
-                    if (this.keys.has('a') || this.keys.has('arrowleft')) {
-                        const newX = Math.max(0, avatar.targetX - movement);
-                        if (newX !== avatar.targetX) {
-                            avatar.moveTo(newX);
-                            moved = true;
-                        }
-                    }
-                    if (this.keys.has('d') || this.keys.has('arrowright')) {
-                        const newX = Math.min(this.containerWidth - 32, avatar.targetX + movement);
-                        if (newX !== avatar.targetX) {
-                            avatar.moveTo(newX);
-                            moved = true;
-                        }
-                    }
-        
-                    if (moved && ws?.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'position',
-                            sessionId,
-                            x: avatar.targetX,
-                            timestamp: Date.now()
-                        }));
-                    }
-                }
-        
-                requestAnimationFrame(() => this.animate());
-            }
-        
-            addAvatar(id) {
-                const x = Math.random() * (this.containerWidth - 32);
-                const avatar = new Avatar(id, x);
-                this.avatars.set(id, avatar);
-                return avatar;
-            }
-        
-            removeAvatar(id) {
-                const avatar = this.avatars.get(id);
-                if (avatar) {
-                    avatar.element.remove();
-                    this.avatars.delete(id);
-                }
-            }
-        
-            broadcastEmotion(emoji) {
-                if (ws?.readyState === WebSocket.OPEN) {
+            
+            
+            
+            function heartbeat() {
+                if (ws && ws.readyState === WebSocket.OPEN && sessionId) {
                     ws.send(JSON.stringify({
-                        type: 'emotion',
+                        type: 'heartbeat',
                         sessionId,
-                        emoji: sanitizeEmoji(emoji),
                         timestamp: Date.now()
                     }));
                 }
             }
-        
-            updateAvatar(id, x) {
-                if (!this.avatars.has(id)) {
-                    this.addAvatar(id);
+
+
+            class Avatar {
+                constructor(id, x) {
+                    this.id = id;
+                    this.element = document.createElement('div');
+                    this.element.className = 'avatar';
+                    this.element.innerHTML = `
+            <div class="avatar-body">
+                <svg width="32" height="32" viewBox="0 0 32 32">
+                    <rect x="4" y="8" width="24" height="20" fill="${this.randomColor()}" rx="2"/>
+                    <circle cx="12" cy="16" r="3" fill="white"/>
+                    <circle cx="20" cy="16" r="3" fill="white"/>
+                    <circle cx="12" cy="16" r="1" fill="black"/>
+                    <circle cx="20" cy="16" r="1" fill="black"/>
+                    ${this.randomAccessory()}
+                </svg>
+            </div>
+        `;
+                    this.x = x;
+                    this.targetX = x;
+                    this.element.style.left = `${x}px`;
+                    this.isSelected = false;
+                    this.setupClickHandler();
+                    document.getElementById('avatars-container').appendChild(this.element);
                 }
-                this.avatars.get(id).moveTo(x);
-            }
-        
-            showEmotion(id, emoji) {
-                if (this.avatars.has(id)) {
-                    this.avatars.get(id).showEmotion(emoji);
+
+                setupClickHandler() {
+                    this.element.addEventListener('click', () => {
+                        if (this.id === sessionId) {
+                            this.toggleSelect();
+                        }
+                    });
+                }
+
+                toggleSelect() {
+                    this.isSelected = !this.isSelected;
+                    if (this.isSelected) {
+                        this.element.style.transform = 'scale(1.2)';
+                        document.getElementById('emoji-picker').style.display = 'flex';
+
+                        const rect = this.element.getBoundingClientRect();
+                        const picker = document.getElementById('emoji-picker');
+                        picker.style.left = `${rect.left + (rect.width / 2)}px`;
+                        picker.style.bottom = '140px';
+                    } else {
+                        this.element.style.transform = 'scale(1)';
+                        document.getElementById('emoji-picker').style.display = 'none';
+                    }
+                }
+
+                randomColor() {
+                    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
+                    return colors[Math.floor(Math.random() * colors.length)];
+                }
+
+                randomAccessory() {
+                    const accessories = [
+                        '<rect x="14" y="22" width="4" height="2" fill="white"/>', // Smile
+                        '<circle cx="16" cy="5" r="3" fill="#FFD700"/>', // Antenna
+                        '<rect x="8" y="4" width="16" height="4" fill="#45B7D1" rx="2"/>' // Hat
+                    ];
+                    return accessories[Math.floor(Math.random() * accessories.length)];
+                }
+
+                moveTo(x) {
+                    this.targetX = x;
+                    this.element.style.left = `${x}px`;
+                }
+
+                showEmotion(emoji) {
+                    const emotion = document.createElement('div');
+                    emotion.className = 'avatar-emotion';
+                    emotion.textContent = emoji;
+                    this.element.appendChild(emotion);
+
+                    emotion.style.animation = 'float-up 1s forwards';
+
+                    setTimeout(() => {
+                        emotion.remove();
+                    }, 1000);
                 }
             }
-        }
-        
-        const ParticleSystem = class {
-            constructor(count) {
-                this.initCanvas();
-                this.particles = Array.from({ length: count }, () => new Particle());
-                this.animate();
+
+            class AvatarSystem {
+                constructor() {
+                    this.avatars = new Map();
+                    this.containerWidth = window.innerWidth;
+                    this.moveSpeed = 5;
+                    this.lastFrame = Date.now();
+                    this.keys = new Set();
+
+                    window.addEventListener('resize', () => {
+                        this.containerWidth = window.innerWidth;
+                    });
+
+                    document.getElementById('emoji-picker').style.display = 'none';
+
+                    document.getElementById('emoji-picker').addEventListener('click', (e) => {
+                        if (e.target.classList.contains('emoji-btn')) {
+                            const emoji = e.target.textContent;
+                            this.broadcastEmotion(emoji);
+                            if (this.avatars.has(sessionId)) {
+                                const avatar = this.avatars.get(sessionId);
+                                avatar.showEmotion(emoji);
+                                avatar.toggleSelect();
+                            }
+                        }
+                        e.stopPropagation();
+                    });
+                    document.addEventListener('click', (e) => {
+                        if (!e.target.closest('.avatar') && !e.target.closest('#emoji-picker')) {
+                            this.avatars.forEach(avatar => {
+                                if (avatar.isSelected) avatar.toggleSelect();
+                            });
+                        }
+                    });
+
+                    document.addEventListener('keydown', (e) => {
+                        this.keys.add(e.key.toLowerCase());
+                    });
+
+                    document.addEventListener('keyup', (e) => {
+                        this.keys.delete(e.key.toLowerCase());
+                    });
+
+                    this.animate();
+                }
+
+                animate() {
+                    const now = Date.now();
+                    const deltaTime = now - this.lastFrame;
+                    this.lastFrame = now;
+
+                    if (sessionId && this.avatars.has(sessionId)) {
+                        const avatar = this.avatars.get(sessionId);
+                        let moved = false;
+                        const movement = this.moveSpeed * (deltaTime / 16);
+
+                        if (this.keys.has('a') || this.keys.has('arrowleft')) {
+                            const newX = Math.max(0, avatar.targetX - movement);
+                            if (newX !== avatar.targetX) {
+                                avatar.moveTo(newX);
+                                moved = true;
+                            }
+                        }
+                        if (this.keys.has('d') || this.keys.has('arrowright')) {
+                            const newX = Math.min(this.containerWidth - 32, avatar.targetX + movement);
+                            if (newX !== avatar.targetX) {
+                                avatar.moveTo(newX);
+                                moved = true;
+                            }
+                        }
+
+                        if (moved) {
+                            this.broadcastPosition(avatar.targetX);
+                        }
+                    }
+
+                    requestAnimationFrame(() => this.animate());
+                }
+
+                addAvatar(id) {
+                    const x = Math.random() * (this.containerWidth - 32);
+                    const avatar = new Avatar(id, x);
+                    this.avatars.set(id, avatar);
+                    return avatar;
+                }
+
+                removeAvatar(id) {
+                    const avatar = this.avatars.get(id);
+                    if (avatar) {
+                        avatar.element.remove();
+                        this.avatars.delete(id);
+                    }
+                }
+
+                broadcastPosition(x) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'position',
+                            sessionId,
+                            x,
+                            timestamp: Date.now()
+                        }));
+                    }
+                }
+
+                broadcastEmotion(emoji) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'emotion',
+                            sessionId,
+                            emoji,
+                            timestamp: Date.now()
+                        }));
+                    }
+                }
+
+                updateAvatar(id, x) {
+                    if (!this.avatars.has(id)) {
+                        this.addAvatar(id);
+                    }
+                    this.avatars.get(id).moveTo(x);
+                }
+
+                showEmotion(id, emoji) {
+                    if (this.avatars.has(id)) {
+                        this.avatars.get(id).showEmotion(emoji);
+                    }
+                }
             }
-        
-            initCanvas() {
-                this.canvas = document.createElement('canvas');
-                this.ctx = this.canvas.getContext('2d');
-                this.canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                document.getElementById('particle-container').appendChild(this.canvas);
-                this.resize();
-                window.addEventListener('resize', () => this.resize());
-            }
-        
-            resize() {
-                this.canvas.width = window.innerWidth;
-                this.canvas.height = window.innerHeight;
-            }
-        
-            animate() {
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.particles.forEach(particle => {
-                    particle.update(this.canvas.width, this.canvas.height);
-                    this.ctx.beginPath();
-                    this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-                    this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
-                    this.ctx.fill();
-                });
-                requestAnimationFrame(() => this.animate());
-            }
-        };
-        
-        class Particle {
-            constructor() {
-                this.reset();
-            }
-        
-            reset() {
-                this.x = Math.random() * window.innerWidth;
-                this.y = Math.random() * window.innerHeight;
-                this.size = Math.random() * 3 + 1;
-                this.speedX = (Math.random() * 0.2 - 0.1) * 0.5;
-                this.speedY = (Math.random() * 0.2 - 0.1) * 0.5;
-                this.life = 1;
-                this.decay = Math.random() * 0.005 + 0.002;
-                this.opacity = Math.random() * 0.5 + 0.2;
-            }
-        
-            update(width, height) {
-                this.x += this.speedX;
-                this.y += this.speedY;
-                this.life -= this.decay;
-                this.opacity = this.life * 0.5;
-        
-                if (this.life <= 0 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+
+            class Particle {
+                constructor() {
                     this.reset();
                 }
-        
-                this.speedX += (Math.random() - 0.5) * 0.01;
-                this.speedY += (Math.random() - 0.5) * 0.01;
-                this.speedX = Math.max(Math.min(this.speedX, 0.1), -0.1);
-                this.speedY = Math.max(Math.min(this.speedY, 0.1), -0.1);
+
+                reset() {
+                    this.x = Math.random() * window.innerWidth;
+                    this.y = Math.random() * window.innerHeight;
+                    this.size = Math.random() * 3 + 1;
+                    this.speedX = (Math.random() * 0.2 - 0.1) * 0.5;
+                    this.speedY = (Math.random() * 0.2 - 0.1) * 0.5;
+                    this.life = 1;
+                    this.decay = Math.random() * 0.005 + 0.002;
+                    this.opacity = Math.random() * 0.5 + 0.2;
+                }
+
+                update() {
+                    this.x += this.speedX;
+                    this.y += this.speedY;
+                    this.life -= this.decay;
+                    this.opacity = this.life * 0.5;
+
+                    if (this.life <= 0 ||
+                        this.x < 0 ||
+                        this.x > window.innerWidth ||
+                        this.y < 0 ||
+                        this.y > window.innerHeight) {
+                        this.reset();
+                    }
+
+                    this.speedX += (Math.random() - 0.5) * 0.01;
+                    this.speedY += (Math.random() - 0.5) * 0.01;
+                    this.speedX = Math.max(Math.min(this.speedX, 0.1), -0.1);
+                    this.speedY = Math.max(Math.min(this.speedY, 0.1), -0.1);
+                }
             }
-        }
-        
-        function updateCountdown() {
-            const now = Date.now();
-            const remaining = END_DATE - now;
-        
-            if (remaining > 0) {
-                const years = Math.floor(remaining / (1000 * 60 * 60 * 24 * 365));
-                const days = Math.floor((remaining % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-        
-                const format = num => num.toString().padStart(2, '0');
-                document.getElementById('countdown').textContent =
-                    `${format(years)}:${format(days)}:${format(hours)}:${format(minutes)}:${format(seconds)}`;
-            } else {
-                document.getElementById('countdown').textContent = '00:00:00:00:00';
+
+            class ParticleSystem {
+                constructor(count) {
+                    this.canvas = document.createElement('canvas');
+                    this.ctx = this.canvas.getContext('2d');
+                    this.particles = [];
+
+                    this.canvas.style.position = 'absolute';
+                    this.canvas.style.top = '0';
+                    this.canvas.style.left = '0';
+                    this.canvas.style.width = '100%';
+                    this.canvas.style.height = '100%';
+
+                    document.getElementById('particle-container').appendChild(this.canvas);
+
+                    this.resize();
+                    window.addEventListener('resize', () => this.resize());
+
+                    for (let i = 0; i < count; i++) {
+                        this.particles.push(new Particle());
+                    }
+
+                    this.animate();
+                }
+
+                resize() {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                }
+
+                animate() {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                    this.particles.forEach(particle => {
+                        particle.update();
+                        this.ctx.beginPath();
+                        this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                        this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
+                        this.ctx.fill();
+                    });
+
+                    requestAnimationFrame(() => this.animate());
+                }
             }
-        }
-        
-        function updateProgress() {
-            const now = Date.now();
-            const elapsed = now - START_DATE;
-            const progress = sanitizeNumber((elapsed / TOTAL_DURATION) * 100, 0, 100);
-        
-            document.getElementById('progress-bar').style.width = `${progress}%`;
-            document.getElementById('progress-text').textContent = `${progress.toFixed(6)}% Complete`;
-        }
-        
-        const particleSystem = new ParticleSystem(35);
-        const avatarSystem = new AvatarSystem();
-        
-        window.addEventListener('beforeunload', () => {
-            if (ws?.readyState === WebSocket.OPEN && sessionId) {
-                ws.send(JSON.stringify({
-                    type: 'disconnect',
-                    sessionId,
-                    timestamp: Date.now()
-                }));
+
+            function updateCountdown() {
+                const now = Date.now();
+                const remaining = END_DATE - now;
+
+                if (remaining > 0) {
+                    const years = Math.floor(remaining / (1000 * 60 * 60 * 24 * 365));
+                    const days = Math.floor((remaining % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+
+                    const format = num => num.toString().padStart(2, '0');
+                    document.getElementById('countdown').textContent =
+                        `${format(years)}:${format(days)}:${format(hours)}:${format(minutes)}:${format(seconds)}`;
+                } else {
+                    document.getElementById('countdown').textContent = '00:00:00:00:00';
+                }
             }
-            clearTimeout(reconnectTimeout);
-        });
-        
-        sessionId = secureStorage.getItem('sessionId');
-        initWebSocket();
-        setInterval(() => {
-            if (ws?.readyState === WebSocket.OPEN && sessionId) {
-                ws.send(JSON.stringify({
-                    type: 'heartbeat',
-                    sessionId,
-                    timestamp: Date.now()
-                }));
+
+            function updateProgress() {
+                const now = Date.now();
+                const elapsed = now - START_DATE;
+                const progress = Math.min(elapsed / TOTAL_DURATION * 100, 100);
+
+                const progressBar = document.getElementById('progress-bar');
+                const progressText = document.getElementById('progress-text');
+
+                progressBar.style.width = `${progress}%`;
+                progressText.textContent = `${progress.toFixed(6)}% Complete`;
             }
-        }, 30000);
-        
-        setInterval(updateProgress, 1000);
-        setInterval(updateCountdown, 1000);
-        updateProgress();
-        updateCountdown();
-        
-        document.getElementById('progress-container').addEventListener('click', () => {
-            const particles = Array.from({ length: 10 }, () => new Particle());
-            particleSystem.particles.push(...particles);
-            if (ws?.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ 
-                    type: 'interaction', 
-                    sessionId,
-                    timestamp: Date.now()
-                }));
-            }
-        });
-        
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            console.error('Global error:', {
-                message: msg,
-                url: url,
-                line: lineNo,
-                column: columnNo,
-                error: error?.message
+
+
+
+            const particleSystem = new ParticleSystem(35);
+            const avatarSystem = new AvatarSystem();
+            const progressContainer = document.getElementById('progress-container');
+            progressContainer.addEventListener('click', () => {
+                const particles = Array.from({ length: 10 }, () => new Particle());
+                particleSystem.particles.push(...particles);
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'interaction', sessionId }));
+                }
             });
-            return false;
-        };
-        
-        window.addEventListener('unhandledrejection', function(event) {
-            console.error('Unhandled promise rejection:', event.reason);
-        });
+
+            window.addEventListener('beforeunload', () => {
+                if (ws && ws.readyState === WebSocket.OPEN && sessionId) {
+                    ws.send(JSON.stringify({
+                        type: 'disconnect',
+                        sessionId,
+                        timestamp: Date.now()
+                    }));
+                }
+                clearTimeout(reconnectTimeout);
+            });
+
+            sessionId = localStorage.getItem('sessionId');
+            initWebSocket();
+            setInterval(heartbeat, 30000);
+            setInterval(updateProgress, 1000);
+            setInterval(updateCountdown, 1000);
+            updateProgress();
+            updateCountdown();
     </script>
 </body>
 </html>

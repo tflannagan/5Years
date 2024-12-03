@@ -5,263 +5,161 @@ const winston = require("winston");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
-const jwt = require("jsonwebtoken");
-const dotenv = require("dotenv");
-const { z } = require("zod");
-const Redis = require("ioredis");
 
-dotenv.config();
-
-const JWT_SECRET =
-  process.env.JWT_SECRET || crypto.randomBytes(64).toString("hex");
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-const redis = new Redis(REDIS_URL);
-
+// Configure logger
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || "info",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json(),
-    winston.format.errors({ stack: true })
-  ),
+  level: "info",
+  format: winston.format.json(),
   transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    }),
-    new winston.transports.File({
-      filename: "error.log",
-      level: "error",
-      maxsize: 5242880,
-      maxFiles: 5,
-    }),
-    new winston.transports.File({
-      filename: "combined.log",
-      maxsize: 5242880,
-      maxFiles: 5,
-    }),
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: "error.log", level: "error" }),
+    new winston.transports.File({ filename: "combined.log" }),
   ],
 });
 
+// Constants
 const PORT = process.env.PORT || 8080;
-const MAX_CONNECTIONS = process.env.MAX_CONNECTIONS || 1000;
-const MAX_CONNECTIONS_PER_IP = process.env.MAX_CONNECTIONS_PER_IP || 5;
-const MAX_MESSAGE_SIZE = process.env.MAX_MESSAGE_SIZE || 1024;
-const HEARTBEAT_INTERVAL = process.env.HEARTBEAT_INTERVAL || 30000;
-const CLEANUP_INTERVAL = process.env.CLEANUP_INTERVAL || 60000;
+const MAX_CONNECTIONS = 10000;
+const MAX_MESSAGE_SIZE = 1024;
+const HEARTBEAT_INTERVAL = 30000;
+const CLEANUP_INTERVAL = 60000;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
   : ["https://5years-production.up.railway.app"];
 
-const messageSchema = z.object({
-  type: z.enum([
-    "init",
-    "reconnect",
-    "position",
-    "emotion",
-    "heartbeat",
-    "disconnect",
-  ]),
-  sessionId: z.string().optional(),
-  x: z.number().min(0).max(5000).optional(),
-  emoji: z.string().max(4).optional(),
-  timestamp: z.number(),
-});
-
-const positionSchema = z.object({
-  x: z.number().min(0).max(5000),
-});
-
+// Express app setup
 const app = express();
 const server = require("http").createServer(app);
 const path = require("path");
+// Middleware
 
-app.use(express.json({ limit: "10kb" }));
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    maxAge: "1d",
-    setHeaders: (res, path) => {
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Cache-Control", "public, max-age=86400");
-    },
-  })
-);
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-const corsMiddleware = (req, res, next) => {
+// CORS middleware
+app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (validateOrigin(origin)) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.header(
       "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+      "Origin, X-Requested-With, Content-Type, Accept"
     );
-    res.header("Access-Control-Max-Age", "86400");
   }
   next();
-};
-
-app.use(corsMiddleware);
+});
 
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "https://fonts.googleapis.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "wss:", "ws:"],
         imgSrc: ["'self'", "data:", "blob:"],
         workerSrc: ["'self'", "blob:"],
-        frameAncestors: ["'none'"],
-        objectSrc: ["'none'"],
-        upgradeInsecureRequests: [],
       },
     },
-    crossOriginEmbedderPolicy: { policy: "require-corp" },
-    crossOriginResourcePolicy: { policy: "same-site" },
-    crossOriginOpenerPolicy: { policy: "same-origin" },
-    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// WebSocket setup
+const wss = new WebSocket.Server({
+  server,
+});
+
+const clients = new Map();
+
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
-    res.status(429).send("Too many requests");
-  },
 });
 
-app.use(limiter);
-
-const clients = new Map();
-const ipConnections = new Map();
-
-function validateOrigin(origin) {
-  return (
-    ALLOWED_ORIGINS.includes(origin) ||
-    (process.env.NODE_ENV === "development" &&
-      origin?.startsWith("http://localhost"))
-  );
+// Utility functions
+function generateSessionId() {
+  return crypto.randomBytes(32).toString("hex");
 }
 
-function rateLimit(ip) {
-  const key = `ratelimit:${ip}`;
-  return redis.incr(key).then((count) => {
-    if (count === 1) {
-      redis.expire(key, 60);
+function broadcastToOthers(message, excludeId) {
+  clients.forEach((client, id) => {
+    if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
     }
-    return count <= 30;
   });
 }
 
-async function validateSession(sessionId) {
-  if (!sessionId) return false;
-  const exists = await redis.exists(`session:${sessionId}`);
-  return exists === 1;
+function broadcastViewerCount() {
+  const count = clients.size;
+  const message = JSON.stringify({
+    type: "viewers",
+    count: count,
+  });
+
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+    }
+  });
 }
 
-const wss = new WebSocket.Server({
-  server,
-  verifyClient: async ({ req }, cb) => {
-    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-    const origin = req.headers.origin;
+function validateOrigin(origin) {
+  return (
+    process.env.NODE_ENV === "development" || ALLOWED_ORIGINS.includes(origin)
+  );
+}
 
-    if (!validateOrigin(origin)) {
-      logger.warn(
-        `Invalid origin connection attempt: ${origin} from IP: ${ip}`
-      );
-      cb(false, 403, "Forbidden");
-      return;
-    }
+// WebSocket connection handling
+wss.on("connection", (ws, req) => {
+  if (!validateOrigin(req.headers.origin)) {
+    ws.terminate();
+    logger.warn(
+      `Rejected connection from unauthorized origin: ${req.headers.origin}`
+    );
+    return;
+  }
 
-    const connectionCount = ipConnections.get(ip) || 0;
-    if (connectionCount >= MAX_CONNECTIONS_PER_IP) {
-      logger.warn(`Max connections per IP reached: ${ip}`);
-      cb(false, 429, "Too Many Connections");
-      return;
-    }
-
-    const allowed = await rateLimit(ip);
-    if (!allowed) {
-      logger.warn(`Rate limit exceeded for IP: ${ip}`);
-      cb(false, 429, "Too Many Requests");
-      return;
-    }
-
-    cb(true);
-  },
-});
-
-wss.on("connection", async (ws, req) => {
-  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-  ipConnections.set(ip, (ipConnections.get(ip) || 0) + 1);
+  if (clients.size >= MAX_CONNECTIONS) {
+    ws.close(1013, "Maximum connections reached");
+    logger.warn("Connection rejected: maximum connections reached");
+    return;
+  }
 
   let clientId = null;
-  let messageCount = 0;
-  let lastMessageTime = Date.now();
 
-  const cleanup = () => {
-    if (clientId) {
-      clients.delete(clientId);
-      const count = ipConnections.get(ip) - 1;
-      if (count <= 0) {
-        ipConnections.delete(ip);
-      } else {
-        ipConnections.set(ip, count);
-      }
-      broadcastViewerCount();
-      redis.del(`session:${clientId}`);
-    }
-  };
-
-  const messageRateCheck = () => {
-    const now = Date.now();
-    if (now - lastMessageTime < 1000) {
-      messageCount++;
-      if (messageCount > 10) {
-        logger.warn(`Message rate limit exceeded for client ${clientId}`);
-        ws.terminate();
-        return false;
-      }
-    } else {
-      messageCount = 0;
-      lastMessageTime = now;
-    }
-    return true;
-  };
-
-  ws.on("message", async (message) => {
+  ws.on("message", (message) => {
     try {
-      if (!messageRateCheck()) return;
       if (message.length > MAX_MESSAGE_SIZE) {
         ws.terminate();
+        logger.warn(`Message size exceeded from client ${clientId}`);
         return;
       }
 
-      const data = messageSchema.parse(JSON.parse(message));
+      const data = JSON.parse(message);
+      logger.info(`Received message: ${data.type} from: ${clientId}`);
 
       switch (data.type) {
         case "init":
-          clientId = crypto.randomBytes(32).toString("hex");
-          await redis.setex(`session:${clientId}`, 86400, "active");
+          clientId = generateSessionId();
           clients.set(clientId, {
             ws,
             lastSeen: Date.now(),
-            ip,
-            x: Math.random() * 500,
+            ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+            x: data.x || Math.random() * 500,
           });
           ws.send(
             JSON.stringify({
@@ -274,35 +172,62 @@ wss.on("connection", async (ws, req) => {
             id,
             x: client.x || 0,
           }));
-          ws.send(JSON.stringify({ type: "sync", avatars }));
+          ws.send(
+            JSON.stringify({
+              type: "sync",
+              avatars,
+            })
+          );
+
+          broadcastToOthers(
+            JSON.stringify({
+              type: "position",
+              sessionId: clientId,
+              x: clients.get(clientId).x,
+            }),
+            clientId
+          );
+
           broadcastViewerCount();
           break;
 
         case "reconnect":
-          if (await validateSession(data.sessionId)) {
+          if (clients.has(data.sessionId)) {
             clientId = data.sessionId;
-            const oldClient = clients.get(clientId);
-            if (oldClient) {
-              clients.set(clientId, {
-                ws,
-                lastSeen: Date.now(),
-                ip,
-                x: oldClient.x,
-              });
-              broadcastViewerCount();
-            }
+            const oldX = clients.get(clientId).x;
+            clients.set(clientId, {
+              ws,
+              lastSeen: Date.now(),
+              ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+              x: oldX,
+            });
+            broadcastViewerCount();
+          } else {
+            clientId = generateSessionId();
+            clients.set(clientId, {
+              ws,
+              lastSeen: Date.now(),
+              ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+              x: Math.random() * 500,
+            });
+            ws.send(
+              JSON.stringify({
+                type: "init",
+                sessionId: clientId,
+              })
+            );
+            broadcastViewerCount();
           }
           break;
 
         case "position":
           if (clientId && clients.has(clientId)) {
-            const position = positionSchema.parse({ x: data.x });
-            clients.get(clientId).x = position.x;
+            clients.get(clientId).x = data.x;
             broadcastToOthers(
               JSON.stringify({
                 type: "position",
                 sessionId: clientId,
-                x: position.x,
+                x: data.x,
               }),
               clientId
             );
@@ -329,30 +254,49 @@ wss.on("connection", async (ws, req) => {
           break;
 
         case "disconnect":
-          cleanup();
+          if (clientId && clients.has(clientId)) {
+            clients.delete(clientId);
+            broadcastToOthers(
+              JSON.stringify({
+                type: "disconnect",
+                sessionId: clientId,
+              }),
+              clientId
+            );
+            broadcastViewerCount();
+          }
           break;
       }
     } catch (error) {
-      logger.error("Message processing error:", {
-        error: error.message,
-        clientId,
-        type: "websocket_message_error",
-      });
+      logger.error("Message processing error:", error);
       ws.terminate();
     }
   });
 
-  ws.on("close", cleanup);
+  ws.on("close", () => {
+    if (clientId && clients.has(clientId)) {
+      clients.delete(clientId);
+      broadcastToOthers(
+        JSON.stringify({
+          type: "disconnect",
+          sessionId: clientId,
+        }),
+        clientId
+      );
+      broadcastViewerCount();
+    }
+  });
+
   ws.on("error", (error) => {
-    logger.error("WebSocket error:", {
-      error: error.message,
-      clientId,
-      type: "websocket_error",
-    });
-    cleanup();
+    logger.error(`WebSocket error for client ${clientId}:`, error);
+    if (clientId && clients.has(clientId)) {
+      clients.delete(clientId);
+      broadcastViewerCount();
+    }
   });
 });
 
+// Cleanup interval
 setInterval(() => {
   const now = Date.now();
   clients.forEach((client, id) => {
@@ -366,63 +310,47 @@ setInterval(() => {
         id
       );
       broadcastViewerCount();
-      redis.del(`session:${id}`);
+      logger.info(`Cleaned up stale connection: ${id}`);
     }
   });
 }, HEARTBEAT_INTERVAL);
 
-function broadcastToOthers(message, excludeId) {
-  clients.forEach((client, id) => {
-    if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
-  });
-}
-
-function broadcastViewerCount() {
-  const count = clients.size;
-  const message = JSON.stringify({
-    type: "viewers",
-    count,
-  });
-
-  clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
-  });
-}
-
-function gracefulShutdown() {
-  logger.info("Initiating graceful shutdown...");
+// Graceful shutdown handling
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received. Closing HTTP server...");
   server.close(() => {
     logger.info("HTTP server closed");
     wss.clients.forEach((client) => {
       client.terminate();
     });
-    redis.quit().then(() => {
-      logger.info("Redis connection closed");
-      process.exit(0);
-    });
+    process.exit(0);
   });
-}
+});
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+process.on("SIGINT", () => {
+  logger.info("SIGINT received. Closing HTTP server...");
+  server.close(() => {
+    logger.info("HTTP server closed");
+    wss.clients.forEach((client) => {
+      client.terminate();
+    });
+    process.exit(0);
+  });
+});
 
+// Error handling
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught Exception:", err);
-  gracefulShutdown();
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection:", {
-    reason,
-    promise,
-    type: "unhandled_rejection",
-  });
+  logger.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
+// Start server
 server.listen(PORT, "0.0.0.0", () => {
   logger.info(`Server running on port ${PORT}`);
 });
