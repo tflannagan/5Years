@@ -50,6 +50,25 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        connectSrc: ["'self'", "wss:", "ws:"],
+        imgSrc: ["'self'", "data:", "blob:"],
+      },
+    },
+  })
+);
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
