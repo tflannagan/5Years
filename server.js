@@ -32,7 +32,7 @@ const app = express();
 const server = require("http").createServer(app);
 const path = require("path");
 // Middleware
-app.use(helmet());
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -55,13 +55,16 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         connectSrc: ["'self'", "wss:", "ws:"],
         imgSrc: ["'self'", "data:", "blob:"],
+        workerSrc: ["'self'", "blob:"],
       },
     },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 
