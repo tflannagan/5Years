@@ -30,11 +30,11 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 // Express app setup
 const app = express();
 const server = require("http").createServer(app);
-
+const path = require("path");
 // Middleware
 app.use(helmet());
 app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 // CORS middleware
 app.use((req, res, next) => {
