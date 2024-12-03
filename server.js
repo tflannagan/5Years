@@ -1,21 +1,23 @@
+const express = require("express");
 const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid");
-const https = require("https");
-const fs = require("fs");
-const rateLimit = require("express-rate-limit");
-const helmet = require("helmet");
 const winston = require("winston");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 
+// Configure logger
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.json(),
   transports: [
+    new winston.transports.Console(),
     new winston.transports.File({ filename: "error.log", level: "error" }),
     new winston.transports.File({ filename: "combined.log" }),
   ],
 });
 
+// Constants
 const PORT = process.env.PORT || 8080;
 const MAX_CONNECTIONS = 10000;
 const MAX_MESSAGE_SIZE = 1024;
@@ -25,22 +27,46 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
   : ["https://5years-production.up.railway.app"];
 
-const server = require("http").createServer();
-
-const express = require("express");
+// Express app setup
 const app = express();
+const server = require("http").createServer(app);
 
-const wss = new WebSocket.Server({ server });
-
-// Serve static files from the public directory
+// Middleware
+app.use(helmet());
+app.use(express.json());
 app.use(express.static("public"));
+
+// CORS middleware
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", process.env.ALLOWED_ORIGINS);
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+  next();
+});
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+// WebSocket setup
+const wss = new WebSocket.Server({
+  server,
+  path: "/ws",
+});
+
 const clients = new Map();
 
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
 });
 
+// Utility functions
 function generateSessionId() {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -73,6 +99,7 @@ function validateOrigin(origin) {
   );
 }
 
+// WebSocket connection handling
 wss.on("connection", (ws, req) => {
   if (!validateOrigin(req.headers.origin)) {
     ws.terminate();
@@ -99,7 +126,7 @@ wss.on("connection", (ws, req) => {
       }
 
       const data = JSON.parse(message);
-      console.log("Received message:", data.type, "from:", clientId);
+      logger.info(`Received message: ${data.type} from: ${clientId}`);
 
       switch (data.type) {
         case "init":
@@ -245,6 +272,7 @@ wss.on("connection", (ws, req) => {
   });
 });
 
+// Cleanup interval
 setInterval(() => {
   const now = Date.now();
   clients.forEach((client, id) => {
@@ -263,15 +291,42 @@ setInterval(() => {
   });
 }, HEARTBEAT_INTERVAL);
 
+// Graceful shutdown handling
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received. Closing HTTP server...");
+  server.close(() => {
+    logger.info("HTTP server closed");
+    wss.clients.forEach((client) => {
+      client.terminate();
+    });
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  logger.info("SIGINT received. Closing HTTP server...");
+  server.close(() => {
+    logger.info("HTTP server closed");
+    wss.clients.forEach((client) => {
+      client.terminate();
+    });
+    process.exit(0);
+  });
+});
+
+// Error handling
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught Exception:", err);
-  process.exit(1);
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
   logger.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-server.listen(PORT, () => {
-  logger.info(`WebSocket server running on port ${PORT}`);
+// Start server
+server.listen(PORT, "0.0.0.0", () => {
+  logger.info(`Server running on port ${PORT}`);
 });
