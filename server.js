@@ -265,7 +265,11 @@ app.use(
 app.use(express.static(path.join(__dirname, "public")));
 
 // Initialize WebSocket server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({
+  server,
+  path: "/ws", // Add explicit path
+  clientTracking: true,
+});
 const gameState = new GameState();
 
 // WebSocket server functions
@@ -639,14 +643,20 @@ process.on("unhandledRejection", (reason, promise) => {
 
 // Basic health and status endpoints
 app.get("/health", (req, res) => {
-  const health = {
+  res.status(200).json({
     status: "OK",
-    players: gameState.clients.size,
     uptime: process.uptime(),
     timestamp: Date.now(),
-  };
+    wsConnections: wss.clients.size,
+  });
+});
 
-  res.json(health);
+app.get("/ws", (req, res) => {
+  res.set({
+    Upgrade: "websocket",
+    Connection: "Upgrade",
+  });
+  res.status(426).send("Upgrade Required");
 });
 
 app.get("/status", (req, res) => {
