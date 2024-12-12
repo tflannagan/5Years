@@ -232,16 +232,22 @@ app.use(
         workerSrc: ["'self'", "blob:"],
       },
     },
+    frameguard: {
+      action: "deny",
+    },
+    noSniff: true,
+    referrerPolicy: {
+      policy: "strict-origin-when-cross-origin",
+    },
     crossOriginEmbedderPolicy: true,
     crossOriginOpenerPolicy: true,
-    crossOriginResourcePolicy: { policy: "same-site" },
+    crossOriginResourcePolicy: {
+      policy: "same-site",
+    },
     dnsPrefetchControl: true,
-    frameguard: { action: "deny" },
     hidePoweredBy: true,
     hsts: true,
     ieNoOpen: true,
-    noSniff: true,
-    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
     xssFilter: true,
   })
 );
