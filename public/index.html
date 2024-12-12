@@ -3,724 +3,1454 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="A 5-year collaborative loading experiment - Watch as the world collectively waits">
-    <meta name="keywords" content="loading experiment, collective experience, digital art, patience">
-    <meta property="og:title" content="The 5-Year Load">
-    <meta property="og:description" content="Join a global experiment in digital patience - A loading bar set to complete in 2029">
-    <meta property="og:type" content="website">
-    <title>5Y | Ty</title>
-    <link rel="icon" type="image/png" href="favicon.ico">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Allerta+Stencil&display=swap" rel="stylesheet">
+    <meta http-equiv="X-Content-Security-Policy" content="default-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; connect-src 'self' wss:; img-src 'self' data: blob:;">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <title>5Y Arena | Ty</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300..700&display=swap" rel="stylesheet">
     <style>
-        * {
-            font-family: "Allerta Stencil", sans-serif;
-  font-weight: 400;
-  font-style: normal;
-        }
-
-        :root {
-            --bg-color: #0a0a0a;
-            --text-color: #ffffff;
-            --accent-color: #2a2a8a;
-            --particle-color: rgba(255, 255, 255, 0.6);
-        }
-
-        @keyframes gradient-slide {
-            0% {
-                background-position: 200% 0;
-            }
-            100% {
-                background-position: -200% 0;
-            }
-        }
-
-        @keyframes glow {
-            0%, 100% {
-                box-shadow: 0 0 20px rgba(103, 50, 255, 0.4);
-            }
-            50% {
-                box-shadow: 0 0 30px rgba(255, 50, 205, 0.6);
-            }
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                transform: scaleY(1);
-            }
-            50% {
-                transform: scaleY(1.1);
-            }
-        }
-
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: "Quicksand", sans-serif;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
 
         body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
+            padding: 10px;
             overflow: hidden;
-            padding: 1rem;
         }
 
-        #container {
+        .game-container {
             width: 100%;
-            max-width: 600px;
-            text-align: center;
-            z-index: 1;
-        }
-
-        #countdown {
-            font-size: clamp(2rem, 8vw, 4rem);
-            font-weight: 300;
-            letter-spacing: 2px;
-            margin-bottom: 2rem;
-            font-variant-numeric: tabular-nums;
-            font-feature-settings: "tnum";
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-        }
-
-        #progress-container {
-            width: 100%;
-            height: 40px;
-            border-radius: 25px;
-            background: rgba(255, 255, 255, 0.1);
-            margin: 2rem 0;
+            height: 100vh;
+            max-height: 96vh;
+            background: linear-gradient(45deg, #1a1a1a, #2a2a2a);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             position: relative;
             overflow: hidden;
-            border-radius: 2px;
-            box-shadow: 0 0 20px rgba(103, 50, 255, 0.4);
-            animation: glow 3s ease-in-out infinite;
         }
 
-        #progress-bar {
+        #gameCanvas {
+            position: absolute;
+            width: 100%;
             height: 100%;
-            background: linear-gradient(
-                90deg,
-                #ff00ff,
-                #00ffff,
-                #ff00ff,
-                #00ffff,
-                #ff00ff
-            );
-            background-size: 200% 100%;
-            width: 0%;
-            position: relative;
-            animation: gradient-slide 3s linear infinite, pulse 2s ease-in-out infinite;
-            box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+            z-index: 3;
         }
 
-        #progress-text {
-            font-size: clamp(0.875rem, 3vw, 1rem);
-            margin-top: 1rem;
-            opacity: 0.8;
-            text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
-        }
-
-        #particle-container {
-            position: fixed;
+        .background {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 0;
-            filter: blur(1px);
+            background: 
+                radial-gradient(circle at 50% 50%, rgba(40,40,40,0.3) 0%, transparent 60%),
+                linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+            z-index: 1;
         }
 
-        .stats {
-            margin-top: 2rem;
-            font-size: 0.875rem;
-            opacity: 0.6;
-        }
-
-        #avatars-container {
-            position: fixed;
-            bottom: 0;
+        .grid {
+            position: absolute;
+            top: 0;
             left: 0;
             width: 100%;
-            height: 100px;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.007) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.007) 1px, transparent 1px);
+            background-size: 20px 20px;
             z-index: 2;
         }
 
-        .avatar {
-    position: absolute;
-    bottom: 20px;
-    width: 32px;
-    height: 32px;
-    transition: left 0.1s linear, transform 0.2s ease;
-    cursor: pointer;
-}
+        .stats-panel {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
 
-.avatar:hover {
-    transform: scale(1.1);
-}
+        .stats-panel #shieldText {
+            transition: color 0.3s ease;
+        }
+
+        .stats-panel #shieldText.cooldown {
+            color: #666;
+        }
+
+        .health-bar, .shield-bar {
+            height: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 4px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3) inset;
+        }
+
+        .health-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            transition: width 0.2s ease-out;
+            box-shadow: 0 0 10px rgba(76,175,80,0.5);
+        }
+
+        .shield-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2196F3, #03A9F4);
+            transition: width 0.2s ease-out;
+            box-shadow: 0 0 10px rgba(33,150,243,0.5);
+        }
+
+        .projectile {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #ff3366;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px #ff3366;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .avatar {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease;
+            z-index: 4;
+            pointer-events: none;
+        }
 
         .avatar-body {
             width: 100%;
             height: 100%;
             position: relative;
-            transform-origin: bottom center;
-            animation: bob 2s infinite;
+            transform-style: preserve-3d;
+            transition: transform 0.2s ease;
         }
 
-        .avatar-emotion {
-    position: absolute;
-    top: -30px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 20px;
-    pointer-events: none;
-}
-
-@keyframes float-up {
-    0% {
-        transform: translateX(-50%) translateY(0);
-        opacity: 1;
-    }
-    100% {
-        transform: translateX(-50%) translateY(-30px);
-        opacity: 0;
-    }
-}
-
-        @keyframes bob {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-2px); }
+        .avatar-shield {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 60px;
+            height: 60px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 2px solid #2196F3;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
         }
 
-        @keyframes float-up {
-            0% { transform: translateX(-50%) translateY(0); opacity: 1; }
-            100% { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+        .avatar-shield-bar {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 3px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 2px;
+            display: none;
         }
 
-        #emoji-picker {
-    position: fixed;
-    flex-direction: column;
-    display: none;
-    background: rgba(0, 0, 0, 0.8);
-    padding: 10px;
-    border-radius: 20px;
-    gap: 10px;
-    z-index: 3;
-    transform: translateX(-50%);
-    transition: all 0.3s ease;
-}
+        .avatar-shield-fill {
+            height: 100%;
+            background: #2196F3;
+            border-radius: 2px;
+            transition: width 0.2s ease;
+        }
 
-        .emoji-btn {
-            background: none;
+        .avatar:not(.self) .avatar-shield-bar {
+            display: block;
+        }
+
+        .avatar.shielded .avatar-shield {
+            opacity: 1;
+            animation: shieldPulse 2s infinite;
+        }
+
+        .avatar.moving .avatar-body {
+            animation: bobbing 0.4s infinite ease-in-out alternate;
+        }
+
+        .avatar-health-bar {
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 2px;
+            display: none;
+        }
+
+        .avatar-health-fill {
+            height: 100%;
+            background: #4CAF50;
+            border-radius: 2px;
+            transition: width 0.2s ease;
+        }
+
+        .avatar:not(.self) .avatar-health-bar {
+            display: block;
+        }
+
+        .game-over-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.95);
+            background: rgba(20, 20, 20, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .game-over-modal.active {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .game-over-modal h2 {
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .game-over-stats {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .modal-button {
+            background: #4CAF50;
+            color: white;
             border: none;
-            font-size: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
             cursor: pointer;
-            padding: 5px;
-            transition: transform 0.2s;
+            font-size: 16px;
+            margin: 10px;
+            transition: all 0.2s ease;
         }
 
-        .emoji-btn:hover {
-            transform: scale(1.2);
+        .modal-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
         }
 
-        @media (hover: hover) {
-            #progress-container:hover {
-            
-                background: rgba(255, 255, 255, 0.15);
+        .shield-effect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 2px solid rgba(33, 150, 243, 0.5);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .avatar.shielded .shield-effect {
+            opacity: 1;
+            animation: shield-pulse 2s infinite;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 20px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .connection-status.visible {
+            opacity: 1;
+        }
+
+        .error-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .error-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .error-message {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 80%;
+            text-align: center;
+        }
+
+        @keyframes shield-pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.3; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+        }
+
+        @keyframes bobbing {
+            from { transform: translateY(0px); }
+            to { transform: translateY(-2px); }
+        }
+
+        @keyframes damage-flash {
+            0% { filter: brightness(1) contrast(1); }
+            50% { filter: brightness(3) contrast(2); }
+            100% { filter: brightness(1) contrast(1); }
+        }
+
+        @keyframes shield-available {
+            0% { transform: scale(1.5); opacity: 0.8; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+
+        @keyframes cooldown-fade {
+            0% { opacity: 0.8; transform: translateX(-50%) translateY(0); }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+        }
+
+        .damaged {
+            animation: damage-flash 0.2s ease;
+        }
+
+        .hit-effect {
+            position: absolute;
+            pointer-events: none;
+            z-index: 4;
+            animation: hitExpand 0.4s ease-out forwards;
+        }
+
+        @keyframes hitExpand {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+        }
+
+        @media (max-width: 768px) {
+            .stats-panel {
+                right: 10px;
+                bottom: 10px;
+                padding: 10px;
+                font-size: 12px;
             }
-        }
 
-        @media (max-width: 480px) {
-            #countdown {
-                font-size: 1.75rem;
-            }
-            
-            .stats {
-                font-size: 0.75rem;
+            .modal-button {
+                padding: 10px 20px;
+                font-size: 14px;
             }
         }
     </style>
 </head>
 <body>
-    <div id="particle-container"></div>
-    <div id="container">
-        <div id="countdown">00:00:00:00:00</div>
-        <div id="progress-container">
-            <div id="progress-bar"></div>
+    <div class="game-container">
+        <div class="background"></div>
+        <div class="grid"></div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="stats-panel">
+            <div>Online: <span id="playerCount">0</span></div>
+            <div>Health: <span id="healthText">100</span></div>
+            <div class="health-bar">
+                <div class="health-fill" id="healthFill" style="width: 100%"></div>
+            </div>
+            <div>Shield: <span id="shieldText">100</span></div>
+            <div class="shield-bar">
+                <div class="shield-fill" id="shieldFill" style="width: 100%"></div>
+            </div>
         </div>
-        <div id="progress-text">0.00% Complete</div>
-        <div class="stats">
-            <div id="viewers">Active Viewers: --</div>
-        </div>
-        <div id="avatars-container"></div>
-        <div id="emoji-picker">
-            <button class="emoji-btn">😊</button>
-            <button class="emoji-btn">🎉</button>
-            <button class="emoji-btn">❤️</button>
-            <button class="emoji-btn">✨</button>
-            <button class="emoji-btn">🤖</button>
+        <div class="game-over-modal" id="gameOverModal">
+            <h2>Battle Over!</h2>
+            <div class="game-over-stats">
+                <div>Damage Dealt: <span id="damageDealt">0</span></div>
+                <div>Survived Time: <span id="survivalTime">0</span>s</div>
+            </div>
+            <button class="modal-button" type="button">Battle Again</button>
         </div>
     </div>
-
+    <div class="connection-status">
+        <span id="connectionText">Connecting...</span>
+    </div>
+    <div class="error-overlay">
+        <div class="error-message">
+            <h3>Connection Error</h3>
+            <p id="errorText">Unable to connect to game server.</p>
+            <button class="modal-button" type="button" id="reconnectButton">Reconnect</button>
+        </div>
+    </div>
     <script>
-         const START_DATE = new Date('2024-12-02').getTime();
-            const END_DATE = new Date('2029-12-02').getTime();
-            const TOTAL_DURATION = END_DATE - START_DATE;
-            const MAX_RECONNECT_ATTEMPTS = 5;
-            const RECONNECT_DELAY = 1000;
-            const WS_URL = window.location.protocol === 'https:'
-            ? `wss://${window.location.host}` 
-            : `ws://localhost:8080/ws`; 
+        class GameStateManager {
+            constructor() {
+                this.state = {
+                    isConnected: false,
+                    isPlaying: false,
+                    lastMessageTime: 0,
+                    messageQueue: [],
+                    rateLimits: {
+                        position: { limit: 120, interval: 10, lastUpdate: 0 },
+                        shoot: { limit: 12, interval: 10, lastUpdate: 0 },
+                        shield: { limit: 1, interval: 5000, lastUpdate: 0 }
+                    }
+                };
+            }
 
-            let ws;
-            let reconnectAttempts = 0;
-            let sessionId = null;
-            let reconnectTimeout;
+            canSendMessage(type) {
+                const now = Date.now();
+                const limit = this.state.rateLimits[type];
+                
+                if (!limit) return true;
+                
+                if (now - limit.lastUpdate >= limit.interval) {
+                    limit.lastUpdate = now;
+                    return true;
+                }
+                return false;
+            }
 
-            function initWebSocket() {
+            updateConnectionState(isConnected) {
+                this.state.isConnected = isConnected;
+                const connectionStatus = document.querySelector('.connection-status');
+                const connectionText = document.getElementById('connectionText');
+                
+                connectionStatus.classList.add('visible');
+                connectionText.textContent = isConnected ? 'Connected' : 'Reconnecting...';
+                
+                setTimeout(() => {
+                    connectionStatus.classList.remove('visible');
+                }, 2000);
+            }
+
+            showError(message) {
+                const errorOverlay = document.querySelector('.error-overlay');
+                const errorText = document.getElementById('errorText');
+                errorText.textContent = message;
+                errorOverlay.classList.add('visible');
+            }
+
+            hideError() {
+                const errorOverlay = document.querySelector('.error-overlay');
+                errorOverlay.classList.remove('visible');
+            }
+        }
+
+        class SecureWebSocket {
+            constructor(url, options = {}) {
+                this.url = url;
+                this.options = {
+                    reconnectInterval: 1000,
+                    maxReconnectAttempts: 5,
+                    ...options
+                };
+                this.reconnectAttempts = 0;
+                this.listeners = new Map();
+                this.connect();
+            }
+
+            connect() {
                 try {
-                    ws = new WebSocket(WS_URL);
-
-                    ws.onopen = () => {
-                        reconnectAttempts = 0;
-                        ws.send(JSON.stringify({
-                            type: 'init',
-                            timestamp: Date.now()
-                        }));
-                    };
-
-                    ws.onmessage = (event) => {
-                        try {
-                            const data = JSON.parse(event.data);
-
-                            switch (data.type) {
-                                case 'init':
-                                    sessionId = data.sessionId;
-                                    localStorage.setItem('sessionId', sessionId);
-                                    avatarSystem.addAvatar(sessionId);
-                                    break;
-
-                                case 'viewers':
-                                    document.getElementById('viewers').textContent =
-                                        `Active Viewers: ${data.count}`;
-                                    break;
-
-                                case 'position':
-                                    if (data.sessionId !== sessionId) {
-                                        avatarSystem.updateAvatar(data.sessionId, data.x);
-                                    }
-                                    break;
-
-                                case 'emotion':
-                                    avatarSystem.showEmotion(data.sessionId, data.emoji);
-                                    break;
-
-                                case 'disconnect':
-                                    if (data.sessionId !== sessionId) {
-                                        avatarSystem.removeAvatar(data.sessionId);
-                                    }
-                                    break;
-
-                                case 'sync':
-                                    if (data.avatars) {
-                                        data.avatars.forEach(avatar => {
-                                            if (avatar.id !== sessionId) {
-                                                avatarSystem.updateAvatar(avatar.id, avatar.x);
-                                            }
-                                        });
-                                    }
-                                    break;
-                            }
-                        } catch (error) {
-                            console.error('Message processing error:', error);
-                        }
-                    };
-
-                    ws.onclose = () => {
-                        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                            reconnectAttempts++;
-                            reconnectTimeout = setTimeout(initWebSocket,
-                                RECONNECT_DELAY * reconnectAttempts);
-                        }
-                    };
+                    this.ws = new WebSocket(this.url);
+                    this.setupEventListeners();
                 } catch (error) {
-                    console.error('WebSocket initialization error:', error);
-                }
-            }
-            
-            
-            
-            function heartbeat() {
-                if (ws && ws.readyState === WebSocket.OPEN && sessionId) {
-                    ws.send(JSON.stringify({
-                        type: 'heartbeat',
-                        sessionId,
-                        timestamp: Date.now()
-                    }));
+                    this.handleError(error);
                 }
             }
 
+            setupEventListeners() {
+                this.ws.onopen = () => {
+                    this.reconnectAttempts = 0;
+                    this.emit('open');
+                };
 
-            class Avatar {
-                constructor(id, x) {
-                    this.id = id;
-                    this.element = document.createElement('div');
-                    this.element.className = 'avatar';
-                    this.element.innerHTML = `
-            <div class="avatar-body">
-                <svg width="32" height="32" viewBox="0 0 32 32">
-                    <rect x="4" y="8" width="24" height="20" fill="${this.randomColor()}" rx="2"/>
-                    <circle cx="12" cy="16" r="3" fill="white"/>
-                    <circle cx="20" cy="16" r="3" fill="white"/>
-                    <circle cx="12" cy="16" r="1" fill="black"/>
-                    <circle cx="20" cy="16" r="1" fill="black"/>
-                    ${this.randomAccessory()}
-                </svg>
-            </div>
-        `;
-                    this.x = x;
-                    this.targetX = x;
-                    this.element.style.left = `${x}px`;
-                    this.isSelected = false;
-                    this.setupClickHandler();
-                    document.getElementById('avatars-container').appendChild(this.element);
-                }
+                this.ws.onclose = () => {
+                    this.handleClose();
+                };
 
-                setupClickHandler() {
-                    this.element.addEventListener('click', () => {
-                        if (this.id === sessionId) {
-                            this.toggleSelect();
-                        }
-                    });
-                }
+                this.ws.onerror = (error) => {
+                    this.handleError(error);
+                };
 
-                toggleSelect() {
-                    this.isSelected = !this.isSelected;
-                    if (this.isSelected) {
-                        this.element.style.transform = 'scale(1.2)';
-                        document.getElementById('emoji-picker').style.display = 'flex';
-
-                        const rect = this.element.getBoundingClientRect();
-                        const picker = document.getElementById('emoji-picker');
-                        picker.style.left = `${rect.left + (rect.width / 2)}px`;
-                        picker.style.bottom = '140px';
-                    } else {
-                        this.element.style.transform = 'scale(1)';
-                        document.getElementById('emoji-picker').style.display = 'none';
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.emit('message', data);
+                    } catch (error) {
+                        console.error('Message parsing error:', error);
                     }
-                }
+                };
+            }
 
-                randomColor() {
-                    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
-                    return colors[Math.floor(Math.random() * colors.length)];
-                }
-
-                randomAccessory() {
-                    const accessories = [
-                        '<rect x="14" y="22" width="4" height="2" fill="white"/>', // Smile
-                        '<circle cx="16" cy="5" r="3" fill="#FFD700"/>', // Antenna
-                        '<rect x="8" y="4" width="16" height="4" fill="#45B7D1" rx="2"/>' // Hat
-                    ];
-                    return accessories[Math.floor(Math.random() * accessories.length)];
-                }
-
-                moveTo(x) {
-                    this.targetX = x;
-                    this.element.style.left = `${x}px`;
-                }
-
-                showEmotion(emoji) {
-                    const emotion = document.createElement('div');
-                    emotion.className = 'avatar-emotion';
-                    emotion.textContent = emoji;
-                    this.element.appendChild(emotion);
-
-                    emotion.style.animation = 'float-up 1s forwards';
-
+            handleClose() {
+                if (this.reconnectAttempts < this.options.maxReconnectAttempts) {
                     setTimeout(() => {
-                        emotion.remove();
-                    }, 1000);
-                }
-            }
-
-            class AvatarSystem {
-                constructor() {
-                    this.avatars = new Map();
-                    this.containerWidth = window.innerWidth;
-                    this.moveSpeed = 5;
-                    this.lastFrame = Date.now();
-                    this.keys = new Set();
-
-                    window.addEventListener('resize', () => {
-                        this.containerWidth = window.innerWidth;
-                    });
-
-                    document.getElementById('emoji-picker').style.display = 'none';
-
-                    document.getElementById('emoji-picker').addEventListener('click', (e) => {
-                        if (e.target.classList.contains('emoji-btn')) {
-                            const emoji = e.target.textContent;
-                            this.broadcastEmotion(emoji);
-                            if (this.avatars.has(sessionId)) {
-                                const avatar = this.avatars.get(sessionId);
-                                avatar.showEmotion(emoji);
-                                avatar.toggleSelect();
-                            }
-                        }
-                        e.stopPropagation();
-                    });
-                    document.addEventListener('click', (e) => {
-                        if (!e.target.closest('.avatar') && !e.target.closest('#emoji-picker')) {
-                            this.avatars.forEach(avatar => {
-                                if (avatar.isSelected) avatar.toggleSelect();
-                            });
-                        }
-                    });
-
-                    document.addEventListener('keydown', (e) => {
-                        this.keys.add(e.key.toLowerCase());
-                    });
-
-                    document.addEventListener('keyup', (e) => {
-                        this.keys.delete(e.key.toLowerCase());
-                    });
-
-                    this.animate();
-                }
-
-                animate() {
-                    const now = Date.now();
-                    const deltaTime = now - this.lastFrame;
-                    this.lastFrame = now;
-
-                    if (sessionId && this.avatars.has(sessionId)) {
-                        const avatar = this.avatars.get(sessionId);
-                        let moved = false;
-                        const movement = this.moveSpeed * (deltaTime / 16);
-
-                        if (this.keys.has('a') || this.keys.has('arrowleft')) {
-                            const newX = Math.max(0, avatar.targetX - movement);
-                            if (newX !== avatar.targetX) {
-                                avatar.moveTo(newX);
-                                moved = true;
-                            }
-                        }
-                        if (this.keys.has('d') || this.keys.has('arrowright')) {
-                            const newX = Math.min(this.containerWidth - 32, avatar.targetX + movement);
-                            if (newX !== avatar.targetX) {
-                                avatar.moveTo(newX);
-                                moved = true;
-                            }
-                        }
-
-                        if (moved) {
-                            this.broadcastPosition(avatar.targetX);
-                        }
-                    }
-
-                    requestAnimationFrame(() => this.animate());
-                }
-
-                addAvatar(id) {
-                    const x = Math.random() * (this.containerWidth - 32);
-                    const avatar = new Avatar(id, x);
-                    this.avatars.set(id, avatar);
-                    return avatar;
-                }
-
-                removeAvatar(id) {
-                    const avatar = this.avatars.get(id);
-                    if (avatar) {
-                        avatar.element.remove();
-                        this.avatars.delete(id);
-                    }
-                }
-
-                broadcastPosition(x) {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'position',
-                            sessionId,
-                            x,
-                            timestamp: Date.now()
-                        }));
-                    }
-                }
-
-                broadcastEmotion(emoji) {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'emotion',
-                            sessionId,
-                            emoji,
-                            timestamp: Date.now()
-                        }));
-                    }
-                }
-
-                updateAvatar(id, x) {
-                    if (!this.avatars.has(id)) {
-                        this.addAvatar(id);
-                    }
-                    this.avatars.get(id).moveTo(x);
-                }
-
-                showEmotion(id, emoji) {
-                    if (this.avatars.has(id)) {
-                        this.avatars.get(id).showEmotion(emoji);
-                    }
-                }
-            }
-
-            class Particle {
-                constructor() {
-                    this.reset();
-                }
-
-                reset() {
-                    this.x = Math.random() * window.innerWidth;
-                    this.y = Math.random() * window.innerHeight;
-                    this.size = Math.random() * 3 + 1;
-                    this.speedX = (Math.random() * 0.2 - 0.1) * 0.5;
-                    this.speedY = (Math.random() * 0.2 - 0.1) * 0.5;
-                    this.life = 1;
-                    this.decay = Math.random() * 0.005 + 0.002;
-                    this.opacity = Math.random() * 0.5 + 0.2;
-                }
-
-                update() {
-                    this.x += this.speedX;
-                    this.y += this.speedY;
-                    this.life -= this.decay;
-                    this.opacity = this.life * 0.5;
-
-                    if (this.life <= 0 ||
-                        this.x < 0 ||
-                        this.x > window.innerWidth ||
-                        this.y < 0 ||
-                        this.y > window.innerHeight) {
-                        this.reset();
-                    }
-
-                    this.speedX += (Math.random() - 0.5) * 0.01;
-                    this.speedY += (Math.random() - 0.5) * 0.01;
-                    this.speedX = Math.max(Math.min(this.speedX, 0.1), -0.1);
-                    this.speedY = Math.max(Math.min(this.speedY, 0.1), -0.1);
-                }
-            }
-
-            class ParticleSystem {
-                constructor(count) {
-                    this.canvas = document.createElement('canvas');
-                    this.ctx = this.canvas.getContext('2d');
-                    this.particles = [];
-
-                    this.canvas.style.position = 'absolute';
-                    this.canvas.style.top = '0';
-                    this.canvas.style.left = '0';
-                    this.canvas.style.width = '100%';
-                    this.canvas.style.height = '100%';
-
-                    document.getElementById('particle-container').appendChild(this.canvas);
-
-                    this.resize();
-                    window.addEventListener('resize', () => this.resize());
-
-                    for (let i = 0; i < count; i++) {
-                        this.particles.push(new Particle());
-                    }
-
-                    this.animate();
-                }
-
-                resize() {
-                    this.canvas.width = window.innerWidth;
-                    this.canvas.height = window.innerHeight;
-                }
-
-                animate() {
-                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-                    this.particles.forEach(particle => {
-                        particle.update();
-                        this.ctx.beginPath();
-                        this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-                        this.ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
-                        this.ctx.fill();
-                    });
-
-                    requestAnimationFrame(() => this.animate());
-                }
-            }
-
-            function updateCountdown() {
-                const now = Date.now();
-                const remaining = END_DATE - now;
-
-                if (remaining > 0) {
-                    const years = Math.floor(remaining / (1000 * 60 * 60 * 24 * 365));
-                    const days = Math.floor((remaining % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24));
-                    const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-                    const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
-
-                    const format = num => num.toString().padStart(2, '0');
-                    document.getElementById('countdown').textContent =
-                        `${format(years)}:${format(days)}:${format(hours)}:${format(minutes)}:${format(seconds)}`;
+                        this.reconnectAttempts++;
+                        this.connect();
+                    }, this.options.reconnectInterval);
                 } else {
-                    document.getElementById('countdown').textContent = '00:00:00:00:00';
+                    this.emit('maxReconnectAttemptsReached');
                 }
+                this.emit('close');
             }
 
-            function updateProgress() {
+            handleError(error) {
+                this.emit('error', error);
+            }
+
+            send(data) {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    try {
+                        this.ws.send(JSON.stringify(data));
+                        return true;
+                    } catch (error) {
+                        console.error('Send error:', error);
+                        return false;
+                    }
+                }
+                return false;
+            }
+
+            on(event, callback) {
+                if (!this.listeners.has(event)) {
+                    this.listeners.set(event, []);
+                }
+                this.listeners.get(event).push(callback);
+            }
+
+            emit(event, data) {
+                const callbacks = this.listeners.get(event) || [];
+                callbacks.forEach(callback => callback(data));
+            }
+
+            close() {
+                if (this.ws) {
+                    this.ws.close();
+                }
+            }
+        }
+
+        class InputValidator {
+            static validatePosition(x, y) {
+                return {
+                    x: Math.max(0, Math.min(window.innerWidth, x)),
+                    y: Math.max(0, Math.min(window.innerHeight, y))
+                };
+            }
+
+            static validateAngle(angle) {
+                return Number(angle) || 0;
+            }
+
+            static sanitizeId(id) {
+                return String(id).replace(/[^a-zA-Z0-9-_]/g, '');
+            }
+        }
+
+        class Avatar {
+            constructor(id, x, y) {
+                this.id = InputValidator.sanitizeId(id);
+                const validPos = InputValidator.validatePosition(x, y);
+                this.x = validPos.x;
+                this.y = validPos.y;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.angle = 0;
+                this.health = 100;
+                this.shield = 100;
+                this.isShielding = false;
+                this.isMoving = false;
+                this.lastUpdate = Date.now();
+                this.createAvatarElement();
+            }
+
+            createAvatarElement() {
+                this.element = document.createElement('div');
+                this.element.className = 'avatar';
+                this.color = this.generateRandomColor();
+                
+                this.element.innerHTML = `
+                    <div class="shield-effect"></div>
+                    <div class="avatar-body">
+                        <svg width="40" height="40" viewBox="0 0 40 40">
+                            <rect x="5" y="10" width="30" height="25" fill="${this.color}" rx="2"/>
+                            <circle cx="15" cy="20" r="4" fill="white"/>
+                            <circle cx="25" cy="20" r="4" fill="white"/>
+                            <circle cx="15" cy="20" r="2" fill="black"/>
+                            <circle cx="25" cy="20" r="2" fill="black"/>
+                            ${this.generateRandomAccessory()}
+                        </svg>
+                    </div>
+                    <div class="avatar-health-bar">
+                        <div class="avatar-health-fill" style="width: 100%"></div>
+                    </div>
+                    <div class="avatar-shield-bar">
+                        <div class="avatar-shield-fill" style="width: 100%"></div>
+                    </div>
+                `;
+
+                document.querySelector('.game-container').appendChild(this.element);
+                this.updatePosition(this.x, this.y);
+            }
+
+            generateRandomColor() {
+                const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            generateRandomAccessory() {
+                const accessories = [
+                    '<path d="M15 28 H25" stroke="white" stroke-width="2"/>',
+                    '<circle cx="20" cy="5" r="3" fill="#FFD700"/>',
+                    '<rect x="10" y="5" width="20" height="5" fill="#45B7D1" rx="2"/>'
+                ];
+                return accessories[Math.floor(Math.random() * accessories.length)];
+            }
+
+            updatePosition(x, y) {
                 const now = Date.now();
-                const elapsed = now - START_DATE;
-                const progress = Math.min(elapsed / TOTAL_DURATION * 100, 100);
-
-                const progressBar = document.getElementById('progress-bar');
-                const progressText = document.getElementById('progress-text');
-
-                progressBar.style.width = `${progress}%`;
-                progressText.textContent = `${progress.toFixed(6)}% Complete`;
+                const timeDelta = Math.min((now - this.lastUpdate) / 1000, 0.1);
+                this.lastUpdate = now;
+            
+                const validPos = InputValidator.validatePosition(x, y);
+                this.targetX = validPos.x;
+                this.targetY = validPos.y;
+            
+                const interpolationSpeed = 0.85;
+                this.x += (this.targetX - this.x) * interpolationSpeed;
+                this.y += (this.targetY - this.y) * interpolationSpeed;
+            
+                this.isMoving = Math.abs(this.targetX - this.x) > 0.1 || Math.abs(this.targetY - this.y) > 0.1;
+                this.element.classList.toggle('moving', this.isMoving);
+            
+                this.element.style.transform = `translate(-50%, -50%)`;
+                this.element.style.left = `${this.x}px`;
+                this.element.style.top = `${this.y}px`;
+            
+                if (this.angle !== undefined) {
+                    const bodyRotation = this.angle * (180 / Math.PI);
+                    const avatarBody = this.element.querySelector('.avatar-body');
+                    avatarBody.style.transform = `rotate(${bodyRotation}deg)`;
+                }
             }
 
+            takeDamage(amount, sourceX, sourceY) {
+                if (!Number.isFinite(amount) || amount < 0) return;
 
-
-            const particleSystem = new ParticleSystem(35);
-            const avatarSystem = new AvatarSystem();
-            const progressContainer = document.getElementById('progress-container');
-            progressContainer.addEventListener('click', () => {
-                const particles = Array.from({ length: 10 }, () => new Particle());
-                particleSystem.particles.push(...particles);
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'interaction', sessionId }));
+                if (this.isShielding && this.shield > 0) {
+                    this.shield = Math.max(0, this.shield - amount * 0.5);
+                    this.updateShieldBar();
+                } else {
+                    this.health = Math.max(0, this.health - amount);
+                    this.updateHealthBar();
                 }
-            });
 
-            window.addEventListener('beforeunload', () => {
-                if (ws && ws.readyState === WebSocket.OPEN && sessionId) {
-                    ws.send(JSON.stringify({
+                this.element.classList.add('damaged');
+                setTimeout(() => this.element.classList.remove('damaged'), 200);
+
+                this.createHitEffect(sourceX, sourceY);
+            }
+
+            createHitEffect(sourceX, sourceY) {
+                const hitEffect = document.createElement('div');
+                hitEffect.className = 'hit-effect';
+                hitEffect.style.left = `${this.x}px`;
+                hitEffect.style.top = `${this.y}px`;
+                document.querySelector('.game-container').appendChild(hitEffect);
+                
+                setTimeout(() => hitEffect.remove(), 400);
+            }
+
+            updateHealthBar() {
+                const healthFill = this.element.querySelector('.avatar-health-fill');
+                if (healthFill) {
+                    healthFill.style.width = `${this.health}%`;
+                }
+            }
+
+            updateShieldBar() {
+                const shieldFill = this.element.querySelector('.avatar-shield-fill');
+                if (shieldFill) {
+                    shieldFill.style.width = `${this.shield}%`;
+                }
+            }
+
+            setShielding(active) {
+                this.isShielding = active;
+                this.element.classList.toggle('shielded', active);
+            }
+
+            remove() {
+                this.element.remove();
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, angle, ownerId) {
+                const validPos = InputValidator.validatePosition(x, y);
+                this.x = validPos.x;
+                this.y = validPos.y;
+                this.angle = InputValidator.validateAngle(angle);
+                this.ownerId = InputValidator.sanitizeId(ownerId);
+                this.speed = 400;
+                this.damage = 10;
+                this.createProjectileElement();
+            }
+
+            createProjectileElement() {
+                this.element = document.createElement('div');
+                this.element.className = 'projectile';
+                document.querySelector('.game-container').appendChild(this.element);
+                this.updatePosition();
+            }
+
+            update(delta) {
+                if (!Number.isFinite(delta) || delta <= 0) return false;
+
+                this.x += Math.cos(this.angle) * this.speed * delta;
+                this.y += Math.sin(this.angle) * this.speed * delta;
+                
+                const validPos = InputValidator.validatePosition(this.x, this.y);
+                const hasMovedPosition = validPos.x !== this.x || validPos.y !== this.y;
+                
+                this.x = validPos.x;
+                this.y = validPos.y;
+                
+                this.updatePosition();
+                
+                const bounds = document.querySelector('.game-container').getBoundingClientRect();
+                return this.x >= 0 && this.x <= bounds.width && 
+                       this.y >= 0 && this.y <= bounds.height && 
+                       !hasMovedPosition;
+            }
+
+            updatePosition() {
+                this.element.style.left = `${this.x}px`;
+                this.element.style.top = `${this.y}px`;
+            }
+
+            remove() {
+                this.element.remove();
+            }
+        }
+
+        const gameState = new GameStateManager();
+
+        const game = {
+            ws: null,
+            sessionId: null,
+            avatars: new Map(),
+            projectiles: [],
+            keys: new Set(),
+            lastUpdate: performance.now(),
+            startTime: Date.now(),
+            damageDealt: 0,
+            shieldDuration: 5000,
+            shieldCooldown: 5000,
+            canUseShield: true,
+            shieldTimer: null,
+            cooldownTimer: null,
+            frameId: null,
+            disconnectTimeout: null,
+
+            init() {
+                this.setupEventListeners();
+                this.setupWebSocket();
+                this.startGameLoop();
+            },
+
+            setupEventListeners() {
+                const gameContainer = document.querySelector('.game-container');
+                const respawnButton = document.querySelector('.modal-button');
+                const reconnectButton = document.getElementById('reconnectButton');
+
+                gameContainer.addEventListener('contextmenu', (e) => e.preventDefault());
+                gameContainer.addEventListener('mousedown', this.handleMouseDown.bind(this));
+                window.addEventListener('keydown', this.handleKeyDown.bind(this));
+                window.addEventListener('keyup', this.handleKeyUp.bind(this));
+                window.addEventListener('mousemove', this.handleMouseMove.bind(this));
+                window.addEventListener('blur', this.handleWindowBlur.bind(this));
+                window.addEventListener('focus', this.handleWindowFocus.bind(this));
+                window.addEventListener('resize', this.handleResize.bind(this));
+                
+                respawnButton.addEventListener('click', () => this.respawn());
+                reconnectButton.addEventListener('click', () => this.reconnect());
+
+                window.addEventListener('beforeunload', () => {
+                    this.cleanup();
+                });
+            },
+
+            setupWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host || 'localhost:8080';
+                const wsUrl = `${protocol}//${host}/ws`;
+
+                this.ws = new SecureWebSocket(wsUrl, {
+                    reconnectInterval: 1000,
+                    maxReconnectAttempts: 5
+                });
+
+                this.ws.on('open', () => {
+                    gameState.updateConnectionState(true);
+                    this.sendInitMessage();
+                });
+
+                this.ws.on('message', (data) => {
+                    this.handleMessage(data);
+                });
+
+                this.ws.on('error', () => {
+                    gameState.updateConnectionState(false);
+                });
+
+                this.ws.on('close', () => {
+                    gameState.updateConnectionState(false);
+                });
+
+                this.ws.on('maxReconnectAttemptsReached', () => {
+                    gameState.showError('Unable to connect to game server. Please try again later.');
+                });
+            },
+
+            sendInitMessage() {
+                const message = {
+                    type: 'init',
+                    timestamp: Date.now(),
+                    screenWidth: window.innerWidth,
+                    screenHeight: window.innerHeight
+                };
+
+                if (this.sessionId) {
+                    message.sessionId = this.sessionId;
+                }
+
+                this.ws.send(message);
+            },
+
+            handleMessage(data) {
+                switch (data.type) {
+                    case 'init':
+                        this.handleInitMessage(data);
+                        break;
+                    case 'position':
+                        this.handlePositionMessage(data);
+                        break;
+                    case 'shield':
+                        this.handleShieldMessage(data);
+                        break;
+                    case 'shoot':
+                        this.handleShootMessage(data);
+                        break;
+                    case 'damage':
+                        this.handleDamageMessage(data);
+                        break;
+                    case 'playerState':
+                        this.handlePlayerStateMessage(data);
+                        break;
+                    case 'death':
+                        this.handleDeathMessage(data);
+                        break;
+                    case 'disconnect':
+                        this.handleDisconnectMessage(data);
+                        break;
+                    case 'error':
+                        this.handleErrorMessage(data);
+                        break;
+                }
+            },
+
+            handleInitMessage(data) {
+                if (!data.sessionId) return;
+                
+                this.sessionId = data.sessionId;
+                const x = window.innerWidth / 2;
+                const y = window.innerHeight / 2;
+                
+                this.avatars.set(data.sessionId, new Avatar(data.sessionId, x, y));
+                this.updatePlayerCount();
+                this.startTime = Date.now();
+                gameState.state.isPlaying = true;
+            },
+
+            handlePositionMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                if (data.sessionId !== this.sessionId) {
+                    if (!this.avatars.has(data.sessionId)) {
+                        this.avatars.set(data.sessionId, new Avatar(data.sessionId, data.x, data.y));
+                        this.updatePlayerCount();
+                    }
+                    const avatar = this.avatars.get(data.sessionId);
+                    avatar.updatePosition(data.x, data.y);
+                    avatar.angle = InputValidator.validateAngle(data.angle);
+                }
+            },
+
+            handleShieldMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                const avatar = this.avatars.get(data.sessionId);
+                if (avatar) {
+                    avatar.setShielding(Boolean(data.active));
+                }
+            },
+
+            handleShootMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                if (data.sessionId !== this.sessionId) {
+                    const shooter = this.avatars.get(data.sessionId);
+                    if (shooter) {
+                        this.projectiles.push(new Projectile(
+                            data.x,
+                            data.y,
+                            data.angle,
+                            data.sessionId
+                        ));
+                    }
+                }
+            },
+
+            handleDamageMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                const target = this.avatars.get(data.targetId);
+                if (target) {
+                    target.takeDamage(data.amount, data.x, data.y);
+                    if (data.sessionId === this.sessionId) {
+                        this.damageDealt += data.amount;
+                    }
+                }
+            },
+
+            handlePlayerStateMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                const avatar = this.avatars.get(data.sessionId);
+                if (avatar && data.sessionId !== this.sessionId) {
+                    avatar.health = Math.max(0, Math.min(100, data.health));
+                    avatar.shield = Math.max(0, Math.min(100, data.shield));
+                    avatar.updateHealthBar();
+                    avatar.updateShieldBar();
+                    avatar.setShielding(Boolean(data.isShielding));
+                }
+            },
+
+            handleDeathMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                if (data.sessionId === this.sessionId) {
+                    this.handlePlayerDeath();
+                } else {
+                    const avatar = this.avatars.get(data.sessionId);
+                    if (avatar) {
+                        avatar.remove();
+                        this.avatars.delete(data.sessionId);
+                        this.updatePlayerCount();
+                    }
+                }
+            },
+
+            handleDisconnectMessage(data) {
+                if (!this.validateMessageData(data)) return;
+                
+                if (data.sessionId !== this.sessionId) {
+                    const avatar = this.avatars.get(data.sessionId);
+                    if (avatar) {
+                        avatar.remove();
+                        this.avatars.delete(data.sessionId);
+                        this.updatePlayerCount();
+                    }
+                }
+            },
+
+            handleErrorMessage(data) {
+                gameState.showError(data.message || 'An error occurred');
+            },
+
+            validateMessageData(data) {
+                return data && typeof data === 'object' && 
+                       typeof data.sessionId === 'string' &&
+                       data.sessionId.length > 0;
+            },
+
+            handleMouseDown(e) {
+                if (e.button === 0) {
+                    this.shoot();
+                }
+            },
+
+            handleKeyDown(e) {
+                this.keys.add(e.key.toLowerCase());
+                if (e.key === ' ' && this.canUseShield) {
+                    e.preventDefault();
+                    this.setShielding(true);
+                }
+            },
+
+            handleKeyUp(e) {
+                this.keys.delete(e.key.toLowerCase());
+            },
+
+            handleMouseMove(e) {
+                if (!this.sessionId) return;
+                
+                const avatar = this.avatars.get(this.sessionId);
+                if (avatar) {
+                    const rect = document.querySelector('.game-container').getBoundingClientRect();
+                    const dx = e.clientX - avatar.x;
+                    const dy = e.clientY - avatar.y;
+                    avatar.angle = Math.atan2(dy, dx);
+                    this.sendPosition();
+                }
+            },
+
+            handleWindowBlur() {
+                this.keys.clear();
+                if (this.frameId) {
+                    cancelAnimationFrame(this.frameId);
+                    this.frameId = null;
+                }
+            },
+
+            handleWindowFocus() {
+                if (!this.frameId) {
+                    this.lastUpdate = performance.now();
+                    this.startGameLoop();
+                }
+            },
+
+            handleResize() {
+                if (this.sessionId) {
+                    const avatar = this.avatars.get(this.sessionId);
+                    if (avatar) {
+                        const validPos = InputValidator.validatePosition(avatar.x, avatar.y);
+                        avatar.updatePosition(validPos.x, validPos.y);
+                        this.sendPosition();
+                    }
+                }
+            },
+
+            handlePlayerDeath() {
+                const survivalTime = Math.floor((Date.now() - this.startTime) / 1000);
+                document.getElementById('survivalTime').textContent = survivalTime;
+                document.getElementById('damageDealt').textContent = Math.round(this.damageDealt);
+                
+                const gameOverModal = document.getElementById('gameOverModal');
+                gameOverModal.classList.add('active');
+                
+                this.ws.send({
+                    type: 'death',
+                    sessionId: this.sessionId,
+                    survivalTime,
+                    damageDealt: this.damageDealt
+                });
+            },
+
+            shoot() {
+                if (!this.sessionId || !gameState.canSendMessage('shoot')) return;
+                
+                const avatar = this.avatars.get(this.sessionId);
+                if (!avatar) return;
+
+                const projectile = new Projectile(
+                    avatar.x + Math.cos(avatar.angle) * 20,
+                    avatar.y + Math.sin(avatar.angle) * 20,
+                    avatar.angle,
+                    this.sessionId
+                );
+                
+                this.projectiles.push(projectile);
+                this.ws.send({
+                    type: 'shoot',
+                    sessionId: this.sessionId,
+                    x: projectile.x,
+                    y: projectile.y,
+                    angle: avatar.angle
+                });
+            },
+
+            update(delta) {
+                if (!this.sessionId || !gameState.state.isPlaying) return;
+
+                const avatar = this.avatars.get(this.sessionId);
+                if (avatar) {
+                    let moved = false;
+                    const speed = 400 * delta; 
+
+                    if (this.keys.has('w') || this.keys.has('arrowup')) {
+                        avatar.y = Math.max(20, avatar.y - speed);
+                        moved = true;
+                    }
+                    if (this.keys.has('s') || this.keys.has('arrowdown')) {
+                        avatar.y = Math.min(window.innerHeight - 20, avatar.y + speed);
+                        moved = true;
+                    }
+                    if (this.keys.has('a') || this.keys.has('arrowleft')) {
+                        avatar.x = Math.max(20, avatar.x - speed);
+                        moved = true;
+                    }
+                    if (this.keys.has('d') || this.keys.has('arrowright')) {
+                        avatar.x = Math.min(window.innerWidth - 20, avatar.x + speed);
+                        moved = true;
+                    }
+
+                    if (moved && gameState.canSendMessage('position')) {
+                        avatar.updatePosition(avatar.x, avatar.y);
+                        this.sendPosition();
+                    }
+
+                    if (!avatar.isShielding && avatar.shield < 100) {
+                        avatar.shield = Math.min(100, avatar.shield + 20 * delta);
+                        avatar.updateShieldBar();
+                        this.updateShieldBar(avatar.shield);
+                    }
+                }
+
+                this.updateProjectiles(delta);
+            },
+
+            updateProjectiles(delta) {
+                this.projectiles = this.projectiles.filter(projectile => {
+                    let shouldKeep = projectile.update(delta);
+                    
+                    if (shouldKeep) {
+                        for (const [id, avatar] of this.avatars.entries()) {
+                            if (id !== projectile.ownerId) {
+                                const dx = avatar.x - projectile.x;
+                                const dy = avatar.y - projectile.y;
+                                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                                if (distance < 20) {
+                                    this.ws.send({
+                                        type: 'damage',
+                                        sessionId: this.sessionId,
+                                        targetId: id,
+                                        amount: projectile.damage,
+                                        x: projectile.x,
+                                        y: projectile.y
+                                    });
+                                    projectile.remove();
+                                    shouldKeep = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!shouldKeep) {
+                        projectile.remove();
+                    }
+                    return shouldKeep;
+                });
+            },
+
+            startGameLoop() {
+                const gameLoop = () => {
+                    const now = performance.now();
+                    const delta = (now - this.lastUpdate) / 1000;
+                    this.lastUpdate = now;
+
+                    this.update(delta);
+                    this.frameId = requestAnimationFrame(gameLoop);
+                };
+
+                this.frameId = requestAnimationFrame(gameLoop);
+            },
+
+            cleanup() {
+                if (this.frameId) {
+                    cancelAnimationFrame(this.frameId);
+                }
+                
+                if (this.ws) {
+                    this.ws.send({
                         type: 'disconnect',
-                        sessionId,
-                        timestamp: Date.now()
-                    }));
+                        sessionId: this.sessionId
+                    });
+                    this.ws.close();
                 }
-                clearTimeout(reconnectTimeout);
-            });
 
-            sessionId = localStorage.getItem('sessionId');
-            initWebSocket();
-            setInterval(heartbeat, 30000);
-            setInterval(updateProgress, 1000);
-            setInterval(updateCountdown, 1000);
-            updateProgress();
-            updateCountdown();
+                this.clearTimers();
+            },
+
+            clearTimers() {
+                if (this.shieldTimer) {
+                    clearTimeout(this.shieldTimer);
+                    this.shieldTimer = null;
+                }
+                if (this.cooldownTimer) {
+                    clearTimeout(this.cooldownTimer);
+                    this.cooldownTimer = null;
+                }
+                if (this.disconnectTimeout) {
+                    clearTimeout(this.disconnectTimeout);
+                    this.disconnectTimeout = null;
+                }
+            },
+
+            respawn() {
+                if (!this.sessionId || !this.ws) return;
+                
+                const gameOverModal = document.getElementById('gameOverModal');
+                gameOverModal.classList.remove('active');
+                
+                this.clearTimers();
+                this.canUseShield = true;
+                
+                const shieldText = document.querySelector('#shieldText');
+                if (shieldText) {
+                    shieldText.style.color = '#fff';
+                }
+                
+                this.startTime = Date.now();
+                this.damageDealt = 0;
+                
+                const container = document.querySelector('.game-container');
+                const padding = 100;
+                const spawnArea = {
+                    x: padding + Math.random() * (container.offsetWidth - padding * 2),
+                    y: padding + Math.random() * (container.offsetHeight - padding * 2)
+                };
+                
+                const validPos = InputValidator.validatePosition(spawnArea.x, spawnArea.y);
+                const newAvatar = new Avatar(this.sessionId, validPos.x, validPos.y);
+                this.avatars.set(this.sessionId, newAvatar);
+                
+                newAvatar.health = 100;
+                newAvatar.shield = 100;
+                
+                this.updateHealthBar(100);
+                this.updateShieldBar(100);
+                
+                this.ws.send({
+                    type: 'respawn',
+                    sessionId: this.sessionId,
+                    x: validPos.x,
+                    y: validPos.y,
+                    health: 100,
+                    shield: 100,
+                    timestamp: Date.now()
+                });
+
+                gameState.state.isPlaying = true;
+            },
+
+            reconnect() {
+                gameState.hideError();
+                this.cleanup();
+                this.setupWebSocket();
+            },
+
+            setShielding(active) {
+                if (!this.sessionId || !this.canUseShield || !gameState.canSendMessage('shield')) return;
+                
+                const avatar = this.avatars.get(this.sessionId);
+                if (!avatar) return;
+            
+                if (active) {
+                    avatar.setShielding(true);
+                    this.canUseShield = false;
+                    
+                    const durationBar = document.createElement('div');
+                    durationBar.className = 'shield-duration-bar';
+                    durationBar.style.cssText = `
+                        position: absolute;
+                        bottom: -25px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        width: 40px;
+                        height: 3px;
+                        background: #2196F3;
+                        border-radius: 2px;
+                        animation: shield-duration ${this.shieldDuration}ms linear forwards;
+                    `;
+                    avatar.element.appendChild(durationBar);
+                    
+                    this.ws.send({
+                        type: 'shield',
+                        sessionId: this.sessionId,
+                        active: true,
+                        timestamp: Date.now()
+                    });
+            
+                    this.shieldTimer = setTimeout(() => {
+                        avatar.setShielding(false);
+                        
+                        const bar = avatar.element.querySelector('.shield-duration-bar');
+                        if (bar) bar.remove();
+            
+                        this.ws.send({
+                            type: 'shield',
+                            sessionId: this.sessionId,
+                            active: false,
+                            timestamp: Date.now()
+                        });
+            
+                        const cooldownIndicator = document.createElement('div');
+                        cooldownIndicator.className = 'shield-cooldown-indicator';
+                        cooldownIndicator.style.cssText = `
+                            position: absolute;
+                            top: -20px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            font-size: 12px;
+                            color: #666;
+                            animation: cooldown-fade ${this.shieldCooldown}ms linear;
+                        `;
+                        cooldownIndicator.textContent = '⌛';
+                        avatar.element.appendChild(cooldownIndicator);
+            
+                        this.cooldownTimer = setTimeout(() => {
+                            this.canUseShield = true;
+                            
+                            const shieldText = document.querySelector('#shieldText');
+                            if (shieldText) {
+                                shieldText.style.color = '#fff';
+                                shieldText.style.textShadow = '0 0 10px rgba(33, 150, 243, 0.5)';
+                            }
+                            
+                            const indicator = avatar.element.querySelector('.shield-cooldown-indicator');
+                            if (indicator) indicator.remove();
+                            
+                            const flash = document.createElement('div');
+                            flash.className = 'shield-available-flash';
+                            flash.style.cssText = `
+                                position: absolute;
+                                width: 100%;
+                                height: 100%;
+                                border-radius: 50%;
+                                border: 2px solid #2196F3;
+                                animation: shield-available 0.5s ease-out forwards;
+                            `;
+                            avatar.element.appendChild(flash);
+                            setTimeout(() => flash.remove(), 500);
+                        }, this.shieldCooldown);
+            
+                        const shieldText = document.querySelector('#shieldText');
+                        if (shieldText) {
+                            shieldText.style.color = '#666';
+                            shieldText.style.textShadow = 'none';
+                        }
+                    }, this.shieldDuration);
+                }
+            },
+
+            sendPosition() {
+                if (!this.sessionId || !this.ws) return;
+                
+                const avatar = this.avatars.get(this.sessionId);
+                if (!avatar) return;
+            
+                const minChange = 0.1;
+                const hasSignificantChange = 
+                    Math.abs(avatar.x - avatar.lastSentX) > minChange || 
+                    Math.abs(avatar.y - avatar.lastSentY) > minChange ||
+                    Math.abs(avatar.angle - avatar.lastSentAngle) > 0.1;
+            
+                if (hasSignificantChange) {
+                    const validPos = InputValidator.validatePosition(avatar.x, avatar.y);
+                    
+                    avatar.lastSentX = avatar.x;
+                    avatar.lastSentY = avatar.y;
+                    avatar.lastSentAngle = avatar.angle;
+            
+                    this.ws.send({
+                        type: 'position',
+                        sessionId: this.sessionId,
+                        x: validPos.x,
+                        y: validPos.y,
+                        angle: avatar.angle,
+                        timestamp: Date.now()
+                    });
+                }
+            },
+
+            updateHealthBar(health) {
+                const healthFill = document.getElementById('healthFill');
+                const healthText = document.getElementById('healthText');
+                if (healthFill && healthText) {
+                    const validHealth = Math.max(0, Math.min(100, health));
+                    healthFill.style.width = `${validHealth}%`;
+                    healthText.textContent = Math.round(validHealth);
+                }
+            },
+
+            updateShieldBar(shield) {
+                const shieldFill = document.getElementById('shieldFill');
+                const shieldText = document.getElementById('shieldText');
+                if (shieldFill && shieldText) {
+                    const validShield = Math.max(0, Math.min(100, shield));
+                    shieldFill.style.width = `${validShield}%`;
+                    shieldText.textContent = Math.round(validShield);
+                }
+            },
+
+            updatePlayerCount() {
+                const playerCount = document.getElementById('playerCount');
+                if (playerCount) {
+                    playerCount.textContent = this.avatars.size;
+                }
+            }
+        };
+
+        window.addEventListener('load', () => {
+            game.init();
+        });
     </script>
 </body>
 </html>
