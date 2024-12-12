@@ -7,7 +7,7 @@ const rateLimit = require("express-rate-limit");
 const path = require("path");
 const crypto = require("crypto");
 
-// Configure winston logger with custom format
+// winston logger
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
   format: winston.format.combine(
@@ -36,7 +36,6 @@ const logger = winston.createLogger({
   ],
 });
 
-// Environment configuration with defaults
 const config = {
   PORT: process.env.PORT || 8080,
   MAX_CONNECTIONS: parseInt(process.env.MAX_CONNECTIONS, 10) || 100,
@@ -52,7 +51,6 @@ const config = {
   NODE_ENV: process.env.NODE_ENV || "development",
 };
 
-// Input validation utilities
 const InputValidator = {
   validatePosition(x, y, bounds) {
     const validX = Math.max(0, Math.min(bounds.width, Number(x) || 0));
@@ -134,7 +132,6 @@ class RateLimiter {
   }
 }
 
-// Game state manager
 class GameState {
   constructor() {
     this.clients = new Map();
@@ -213,7 +210,6 @@ class GameState {
   }
 }
 
-// Initialize Express app with security middleware
 const app = express();
 const server = require("http").createServer(app);
 
@@ -343,7 +339,7 @@ wss.on("connection", (ws, req) => {
         return;
       }
 
-      // Handle different message types
+      // Handle message types
       switch (data.type) {
         case "init":
           handleInitMessage(ws, data);
@@ -380,7 +376,7 @@ wss.on("connection", (ws, req) => {
     clientId = uuidv4();
     const client = gameState.addClient(clientId, ws);
 
-    // Set client bounds from initialization data
+    // Set client bounds
     if (data.screenWidth && data.screenHeight) {
       client.bounds = {
         width: Math.max(800, Math.min(3840, Number(data.screenWidth))),
@@ -536,7 +532,7 @@ wss.on("connection", (ws, req) => {
     cleanupClient();
   });
 
-  // Set up ping/pong for connection monitoring
+  // Ping/pong monitoring
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.ping(crypto.randomBytes(8));
@@ -626,77 +622,32 @@ process.on("unhandledRejection", (reason, promise) => {
   logger.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-// Health check endpoint
+// Basic health and status endpoints
 app.get("/health", (req, res) => {
   const health = {
-    uptime: process.uptime(),
     status: "OK",
+    players: gameState.clients.size,
+    uptime: process.uptime(),
     timestamp: Date.now(),
-    connections: wss.clients.size,
-    memory: process.memoryUsage(),
-    environment: config.NODE_ENV,
   };
 
   res.json(health);
 });
 
-// Monitoring endpoints (protected by basic auth in production)
-if (config.NODE_ENV === "production") {
-  const auth = require("express-basic-auth");
-  const adminAuth = auth({
-    users: {
-      [process.env.ADMIN_USER || "admin"]: process.env.ADMIN_PASS || "changeme",
+app.get("/status", (req, res) => {
+  const status = {
+    server: {
+      status: "running",
+      uptime: process.uptime(),
     },
-    challenge: true,
-  });
+    game: {
+      players: gameState.clients.size,
+      maxPlayers: config.MAX_CONNECTIONS,
+    },
+  };
 
-  app.get("/metrics", adminAuth, (req, res) => {
-    const metrics = {
-      players: {
-        total: gameState.clients.size,
-        active: Array.from(gameState.clients.values()).filter(
-          (c) => Date.now() - c.lastSeen < config.HEARTBEAT_INTERVAL
-        ).length,
-      },
-      performance: {
-        memory: process.memoryUsage(),
-        cpu: process.cpuUsage(),
-        uptime: process.uptime(),
-      },
-      rateLimiting: {
-        windowMs: config.RATE_LIMIT_WINDOW,
-        max: config.RATE_LIMIT_MAX,
-      },
-      errors: {
-        lastError: logger.getLastError?.() || null,
-      },
-    };
-
-    res.json(metrics);
-  });
-
-  app.get("/status", adminAuth, (req, res) => {
-    const status = {
-      server: {
-        status: "running",
-        version: process.env.npm_package_version || "1.0.0",
-        nodeVersion: process.version,
-        uptime: process.uptime(),
-      },
-      game: {
-        players: gameState.clients.size,
-        maxPlayers: config.MAX_CONNECTIONS,
-      },
-      system: {
-        memory: process.memoryUsage(),
-        platform: process.platform,
-        arch: process.arch,
-      },
-    };
-
-    res.json(status);
-  });
-}
+  res.json(status);
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
