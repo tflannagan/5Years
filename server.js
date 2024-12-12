@@ -47,7 +47,12 @@ const config = {
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100,
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",")
-    : ["http://localhost:8080"],
+    : [
+        "https://5years-production.up.railway.app", // Removed trailing slash
+        "http://5years-production.up.railway.app", // HTTP version
+        "wss://5years-production.up.railway.app", // WSS version
+        "ws://5years-production.up.railway.app", // WS version
+      ],
   NODE_ENV: process.env.NODE_ENV || "development",
 };
 
@@ -259,8 +264,11 @@ const gameState = new GameState();
 
 // WebSocket server functions
 function validateOrigin(origin) {
+  if (!origin) return true; // Allow connections with no origin header
+  const trimmedOrigin = origin.replace(/\/$/, ""); // Remove trailing slash if present
   return (
-    config.ALLOWED_ORIGINS.includes(origin) || config.NODE_ENV === "development"
+    config.ALLOWED_ORIGINS.includes(trimmedOrigin) ||
+    config.NODE_ENV === "development"
   );
 }
 
