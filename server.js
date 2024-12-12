@@ -570,9 +570,10 @@ const cleanupInterval = setInterval(() => {
   }
 }, config.CLEANUP_INTERVAL);
 
-// Server startup and shutdown handling
-server.listen(config.PORT, "0.0.0.0", () => {
-  logger.info(`Game server running on port ${config.PORT}`);
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+  logger.info(`Game server running on port ${PORT}`);
   logger.info(`Environment: ${config.NODE_ENV}`);
   logger.info(`Max connections: ${config.MAX_CONNECTIONS}`);
 });
