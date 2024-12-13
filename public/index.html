@@ -831,35 +831,77 @@
             },
 
             setupWebSocket() {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.host}/ws`;
-            
-                this.ws = new SecureWebSocket(wsUrl, {
-                    reconnectInterval: 1000,
-                    maxReconnectAttempts: 5
-                });
-
-                this.ws.on('open', () => {
-                    gameState.updateConnectionState(true);
-                    this.sendInitMessage();
-                });
-
-                this.ws.on('message', (data) => {
-                    this.handleMessage(data);
-                });
-
-                this.ws.on('error', () => {
-                    gameState.updateConnectionState(false);
-                });
-
-                this.ws.on('close', () => {
-                    gameState.updateConnectionState(false);
-                });
-
-                this.ws.on('maxReconnectAttemptsReached', () => {
-                    gameState.showError('Unable to connect to game server. Please try again later.');
-                });
-            },
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+              
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                  this.ws.send(JSON.stringify({
+                    type: 'init',
+                    screenWidth: window.innerWidth,
+                    screenHeight: window.innerHeight,
+                    timestamp: Date.now()
+                  }));
+                };
+              
+                this.ws.onmessage = (event) => {
+                  try {
+                    const data = JSON.parse(event.data);
+                    
+                    switch (data.type) {
+                      case 'init':
+                        this.sessionId = data.sessionId;
+                        const x = window.innerWidth / 2;
+                        const y = window.innerHeight / 2;
+                        this.avatars.set(data.sessionId, new Avatar(data.sessionId, x, y));
+                        break;
+              
+                      case 'playerJoined':
+                        if (data.sessionId !== this.sessionId) {
+                          this.avatars.set(data.sessionId, new Avatar(data.sessionId, data.x, data.y));
+                          const avatar = this.avatars.get(data.sessionId);
+                          if (avatar) {
+                            avatar.health = data.health;
+                            avatar.shield = data.shield;
+                            avatar.angle = data.angle;
+                            avatar.updateHealthBar();
+                            avatar.updateShieldBar();
+                          }
+                        }
+                        this.updatePlayerCount();
+                        break;
+              
+                      case 'playerLeft':
+                        if (data.sessionId !== this.sessionId) {
+                          const avatar = this.avatars.get(data.sessionId);
+                          if (avatar) {
+                            avatar.remove();
+                            this.avatars.delete(data.sessionId);
+                          }
+                          this.updatePlayerCount();
+                        }
+                        break;
+              
+                      case 'position':
+                        if (data.sessionId !== this.sessionId) {
+                          const avatar = this.avatars.get(data.sessionId);
+                          if (avatar) {
+                            avatar.updatePosition(data.x, data.y);
+                            avatar.angle = data.angle;
+                          }
+                        }
+                        break;
+                    }
+                  } catch (error) {
+                    this.ws.close();
+                  }
+                };
+              
+                this.ws.onclose = () => {
+                  setTimeout(() => this.setupWebSocket(), 1000);
+                };
+              },
 
             sendInitMessage() {
                 const message = {
@@ -1386,34 +1428,34 @@
             },
 
             sendPosition() {
-                if (!this.sessionId || !this.ws) return;
-                
+                if (!this.sessionId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+  
                 const avatar = this.avatars.get(this.sessionId);
                 if (!avatar) return;
-            
+              
                 const minChange = 0.1;
                 const hasSignificantChange = 
-                    Math.abs(avatar.x - avatar.lastSentX) > minChange || 
-                    Math.abs(avatar.y - avatar.lastSentY) > minChange ||
-                    Math.abs(avatar.angle - avatar.lastSentAngle) > 0.1;
-            
+                  !avatar.lastSentX || 
+                  !avatar.lastSentY || 
+                  Math.abs(avatar.x - avatar.lastSentX) > minChange || 
+                  Math.abs(avatar.y - avatar.lastSentY) > minChange || 
+                  Math.abs(avatar.angle - (avatar.lastSentAngle || 0)) > 0.1;
+              
                 if (hasSignificantChange) {
-                    const validPos = InputValidator.validatePosition(avatar.x, avatar.y);
-                    
-                    avatar.lastSentX = avatar.x;
-                    avatar.lastSentY = avatar.y;
-                    avatar.lastSentAngle = avatar.angle;
-            
-                    this.ws.send({
-                        type: 'position',
-                        sessionId: this.sessionId,
-                        x: validPos.x,
-                        y: validPos.y,
-                        angle: avatar.angle,
-                        timestamp: Date.now()
-                    });
+                  avatar.lastSentX = avatar.x;
+                  avatar.lastSentY = avatar.y;
+                  avatar.lastSentAngle = avatar.angle;
+              
+                  this.ws.send(JSON.stringify({
+                    type: 'position',
+                    sessionId: this.sessionId,
+                    x: avatar.x,
+                    y: avatar.y,
+                    angle: avatar.angle,
+                    timestamp: Date.now()
+                  }));
                 }
-            },
+              },
 
             updateHealthBar(health) {
                 const healthFill = document.getElementById('healthFill');
