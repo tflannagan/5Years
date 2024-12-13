@@ -104,6 +104,7 @@ class GameState {
       isShielding: false,
       bounds,
       lastProcessedInput: 0,
+      lastBroadcastTime: 0,
     };
 
     this.clients.set(clientId, client);
@@ -118,14 +119,21 @@ class GameState {
     const client = this.clients.get(clientId);
     if (!client) return false;
 
-    if (inputSequence <= client.lastProcessedInput) return false;
+    const now = Date.now();
+    const timeSinceLastBroadcast = now - client.lastBroadcastTime;
+
+    // Rate limit position updates
+    if (timeSinceLastBroadcast < 16) {
+      // ~60 FPS
+      return false;
+    }
 
     const validPos = InputValidator.validatePosition(x, y, client.bounds);
     client.x = validPos.x;
     client.y = validPos.y;
     client.angle = InputValidator.validateAngle(angle);
-    client.lastSeen = Date.now();
-    client.lastProcessedInput = inputSequence;
+    client.lastSeen = now;
+    client.lastBroadcastTime = now;
 
     return true;
   }
@@ -164,6 +172,7 @@ class GameState {
 const app = express();
 const server = require("http").createServer(app);
 
+// Updated CORS and security settings
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -180,13 +189,20 @@ app.use(
   })
 );
 
+// Updated CORS middleware
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin;
+  if (config.ALLOWED_ORIGINS.includes("*")) {
+    res.header("Access-Control-Allow-Origin", "*");
+  } else if (config.ALLOWED_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.header(
     "Access-Control-Allow-Headers",
     "Origin, X-Requested-With, Content-Type, Accept"
   );
+  res.header("Access-Control-Allow-Credentials", "true");
   next();
 });
 
@@ -199,12 +215,20 @@ app.use(
 
 app.use(express.static(path.join(__dirname, "public")));
 
+// Updated WebSocket server configuration
 const wss = new WebSocket.Server({
   server,
   path: "/ws",
   clientTracking: true,
   perMessageDeflate: false,
   maxPayload: config.MAX_MESSAGE_SIZE,
+  verifyClient: ({ origin }, callback) => {
+    if (config.ALLOWED_ORIGINS.includes("*")) {
+      callback(true);
+    } else {
+      callback(config.ALLOWED_ORIGINS.includes(origin));
+    }
+  },
 });
 
 const gameState = new GameState();
@@ -218,7 +242,11 @@ function broadcastToOthers(message, excludeId) {
   const messageStr = JSON.stringify(message);
   gameState.clients.forEach((client, id) => {
     if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(messageStr);
+      try {
+        client.ws.send(messageStr);
+      } catch (error) {
+        logger.error(`Broadcast error for client ${id}:`, error);
+      }
     }
   });
 }
@@ -227,7 +255,11 @@ function broadcastToAll(message) {
   const messageStr = JSON.stringify(message);
   gameState.clients.forEach((client) => {
     if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(messageStr);
+      try {
+        client.ws.send(messageStr);
+      } catch (error) {
+        logger.error(`Broadcast error for client ${client.id}:`, error);
+      }
     }
   });
 }
@@ -239,23 +271,29 @@ function updatePlayerCount() {
   });
 }
 
+// Updated connection handler
 wss.on("connection", (ws, req) => {
-  if (!validateOrigin(req.headers.origin)) {
-    ws.terminate();
-    return;
-  }
-
-  if (gameState.clients.size >= config.MAX_CONNECTIONS) {
-    ws.close(1013, "Maximum connections reached");
-    return;
-  }
-
   ws.isAlive = true;
+  let clientId = null;
+
+  const ping = () => {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch (error) {
+      ws.terminate();
+    }
+  };
+
+  const pingInterval = setInterval(ping, config.HEARTBEAT_INTERVAL);
+
   ws.on("pong", () => {
     ws.isAlive = true;
   });
-
-  let clientId = null;
 
   ws.on("message", (message) => {
     try {
@@ -290,6 +328,7 @@ wss.on("connection", (ws, req) => {
             })
           );
 
+          // Send existing players to new player
           gameState.clients.forEach((existingClient, existingId) => {
             if (existingId !== clientId) {
               ws.send(
@@ -301,11 +340,13 @@ wss.on("connection", (ws, req) => {
                   angle: existingClient.angle,
                   health: existingClient.health,
                   shield: existingClient.shield,
+                  isShielding: existingClient.isShielding,
                 })
               );
             }
           });
 
+          // Broadcast new player to others
           broadcastToOthers(
             {
               type: "playerJoined",
@@ -315,6 +356,7 @@ wss.on("connection", (ws, req) => {
               angle: client.angle,
               health: client.health,
               shield: client.shield,
+              isShielding: client.isShielding,
             },
             clientId
           );
@@ -325,15 +367,15 @@ wss.on("connection", (ws, req) => {
         case "position":
           if (!clientId) return;
 
-          if (
-            gameState.updateClientPosition(
-              clientId,
-              data.x,
-              data.y,
-              data.angle,
-              data.inputSequence
-            )
-          ) {
+          const positionResult = gameState.updateClientPosition(
+            clientId,
+            data.x,
+            data.y,
+            data.angle,
+            data.inputSequence
+          );
+
+          if (positionResult) {
             broadcastToOthers(
               {
                 type: "position",
@@ -360,6 +402,7 @@ wss.on("connection", (ws, req) => {
                 x: data.x,
                 y: data.y,
                 angle: data.angle,
+                timestamp: Date.now(),
               },
               clientId
             );
@@ -388,6 +431,17 @@ wss.on("connection", (ws, req) => {
               x: target.x,
               y: target.y,
             });
+
+            // Send damage notification to the target
+            target.ws.send(
+              JSON.stringify({
+                type: "damage",
+                amount: damage,
+                sourceId: clientId,
+                x: data.x,
+                y: data.y,
+              })
+            );
           }
           break;
 
@@ -411,44 +465,45 @@ wss.on("connection", (ws, req) => {
 
         case "disconnect":
           if (!clientId) return;
-          cleanupClient(clientId);
+          cleanupClient();
           break;
       }
     } catch (error) {
-      ws.terminate();
+      logger.error("Message processing error:", error);
     }
   });
 
-  function cleanupClient(id) {
-    if (id) {
-      gameState.removeClient(id);
+  function cleanupClient() {
+    if (clientId) {
+      clearInterval(pingInterval);
+      gameState.removeClient(clientId);
       broadcastToAll({
         type: "playerLeft",
-        sessionId: id,
+        sessionId: clientId,
       });
       updatePlayerCount();
+      clientId = null;
     }
   }
 
   ws.on("close", () => {
-    cleanupClient(clientId);
+    cleanupClient();
   });
 
-  ws.on("error", () => {
-    cleanupClient(clientId);
+  ws.on("error", (error) => {
+    logger.error(`WebSocket error for client ${clientId}:`, error);
+    cleanupClient();
   });
 });
 
-const heartbeatInterval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      return ws.terminate();
-    }
-    ws.isAlive = false;
-    ws.ping();
-  });
-}, config.HEARTBEAT_INTERVAL);
+// Start server
+server.listen(config.PORT, () => {
+  logger.info(`Game server running on port ${config.PORT}`);
+  logger.info(`Environment: ${config.NODE_ENV}`);
+});
 
+// Cleanup intervals
+// Cleanup intervals
 const cleanupInterval = setInterval(() => {
   try {
     gameState.cleanup();
@@ -458,35 +513,56 @@ const cleanupInterval = setInterval(() => {
   }
 }, config.CLEANUP_INTERVAL);
 
-server.listen(config.PORT, () => {
-  logger.info(`Game server running on port ${config.PORT}`);
-});
+// Global heartbeat check for all clients
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, config.HEARTBEAT_INTERVAL);
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
-
+// Graceful shutdown handler
 async function gracefulShutdown(signal) {
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
-  clearInterval(heartbeatInterval);
+  // Clear intervals
   clearInterval(cleanupInterval);
+  clearInterval(heartbeatInterval);
 
+  // Close HTTP server
   server.close(() => {
+    // Close all WebSocket connections
     wss.clients.forEach((client) => {
-      client.close(1001, "Server shutting down");
+      try {
+        client.close(1001, "Server shutting down");
+      } catch (error) {
+        logger.error("Error closing client connection:", error);
+      }
     });
 
+    // Close WebSocket server
     wss.close(() => {
       logger.info("WebSocket server closed");
-      process.exit(0);
+
+      // Close logger
+      logger.on("finish", () => {
+        process.exit(0);
+      });
+      logger.end();
     });
   });
 
+  // Force shutdown after timeout
   setTimeout(() => {
     logger.error("Forced shutdown after timeout");
     process.exit(1);
   }, 10000);
 }
+
+// Process event handlers
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
 
 process.on("uncaughtException", (error) => {
   logger.error("Uncaught Exception:", error);
@@ -495,44 +571,62 @@ process.on("uncaughtException", (error) => {
 
 process.on("unhandledRejection", (reason, promise) => {
   logger.error("Unhandled Rejection at:", promise, "reason:", reason);
+  gracefulShutdown("UNHANDLED_REJECTION");
 });
 
+// Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
     uptime: process.uptime(),
     timestamp: Date.now(),
     wsConnections: wss.clients.size,
+    environment: config.NODE_ENV,
+    memoryUsage: process.memoryUsage(),
   });
 });
 
+// Game status endpoint
 app.get("/status", (req, res) => {
-  res.json({
+  const status = {
     server: {
       status: "running",
       uptime: process.uptime(),
+      timestamp: Date.now(),
     },
     game: {
       players: gameState.clients.size,
       maxPlayers: config.MAX_CONNECTIONS,
       environment: config.NODE_ENV,
     },
-  });
+    websocket: {
+      connections: wss.clients.size,
+      path: "/ws",
+    },
+  };
+  res.json(status);
 });
 
+// WebSocket upgrade endpoint
 app.get("/ws", (req, res) => {
   res.set({
     Upgrade: "websocket",
     Connection: "Upgrade",
+    "Sec-WebSocket-Version": "13",
   });
   res.status(426).send("Upgrade Required");
 });
 
+// Error handling middleware
 app.use((err, req, res, next) => {
   logger.error("Express error:", err);
-  res.status(500).json({ error: "Internal server error" });
+  res.status(500).json({
+    error: "Internal server error",
+    timestamp: Date.now(),
+  });
 });
 
+// Export server components
 module.exports = {
   server,
   wss,

@@ -829,132 +829,152 @@
                 });
             },
 
-            setupWebSocket() {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                const wsUrl = `${protocol}//${host}/ws`;
+// Replace the game.setupWebSocket method
+setupWebSocket() {
+    if (this.ws) {
+        // Clean up existing connection
+        this.cleanup();
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname === 'localhost' ? 
+        `localhost:${window.location.port}` : 
+        window.location.host;
+    const wsUrl = `${protocol}//${host}/ws`;
+
+    console.log(`Connecting to WebSocket at ${wsUrl}`);
+    this.ws = new WebSocket(wsUrl);
+
+    // Connection opened
+    this.ws.onopen = () => {
+        console.log('WebSocket connected');
+        gameState.updateConnectionState(true);
+        // Send initial state
+        if (this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'init',
+                screenWidth: window.innerWidth,
+                screenHeight: window.innerHeight,
+                timestamp: Date.now()
+            }));
+        }
+    };
+
+    // Listen for messages
+    this.ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
             
-                if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
-                    this.ws.close();
-                }
-            
-                this.ws = new WebSocket(wsUrl);
-            
-                this.ws.onopen = () => {
-                    gameState.updateConnectionState(true);
-                    this.ws.send(JSON.stringify({
-                        type: 'init',
-                        screenWidth: window.innerWidth,
-                        screenHeight: window.innerHeight,
-                        timestamp: Date.now()
-                    }));
-                };
-            
-                this.ws.onclose = (event) => {
-                    gameState.updateConnectionState(false);
-                    
-                
-                    if (event.code !== 1000 && event.code !== 1001) {
-                        setTimeout(() => {
-                            if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-                                this.setupWebSocket();
-                            }
-                        }, 3000);
-                    }
-                };
-            
-                this.ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    gameState.updateConnectionState(false);
-                };
-            
-                this.ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        
-                        switch (data.type) {
-                            case 'init':
-                                this.sessionId = data.sessionId;
-                                const x = window.innerWidth / 2;
-                                const y = window.innerHeight / 2;
-                                this.avatars.set(data.sessionId, new Avatar(data.sessionId, x, y));
-                                gameState.state.isPlaying = true;
-                                this.updatePlayerCount();
-                                break;
-            
-                            case 'playerJoined':
-                                if (data.sessionId !== this.sessionId) {
-                                    if (!this.avatars.has(data.sessionId)) {
-                                        const avatar = new Avatar(data.sessionId, data.x, data.y);
-                                        this.avatars.set(data.sessionId, avatar);
-                                        avatar.health = data.health;
-                                        avatar.shield = data.shield;
-                                        avatar.angle = data.angle;
-                                        avatar.updateHealthBar();
-                                        avatar.updateShieldBar();
-                                    }
-                                    this.updatePlayerCount();
-                                }
-                                break;
-            
-                            case 'playerLeft':
-                                if (data.sessionId !== this.sessionId) {
-                                    const avatar = this.avatars.get(data.sessionId);
-                                    if (avatar) {
-                                        avatar.remove();
-                                        this.avatars.delete(data.sessionId);
-                                        this.updatePlayerCount();
-                                    }
-                                }
-                                break;
-            
-                            case 'position':
-                                if (data.sessionId !== this.sessionId) {
-                                    const avatar = this.avatars.get(data.sessionId);
-                                    if (avatar) {
-                                        avatar.updatePosition(data.x, data.y);
-                                        avatar.angle = data.angle;
-                                    }
-                                }
-                                break;
-            
-                            case 'shoot':
-                                if (data.sessionId !== this.sessionId) {
-                                    const shooter = this.avatars.get(data.sessionId);
-                                    if (shooter) {
-                                        const projectile = new Projectile(data.x, data.y, data.angle, data.sessionId);
-                                        this.projectiles.push(projectile);
-                                    }
-                                }
-                                break;
-            
-                            case 'damage':
-                                const target = this.avatars.get(data.targetId);
-                                if (target) {
-                                    target.takeDamage(data.amount, data.x, data.y);
-                                    if (data.sessionId === this.sessionId) {
-                                        this.damageDealt += data.amount;
-                                    }
-                                }
-                                break;
-            
-                            case 'playerState':
-                                const avatar = this.avatars.get(data.sessionId);
-                                if (avatar && data.sessionId !== this.sessionId) {
-                                    avatar.health = data.health;
-                                    avatar.shield = data.shield;
-                                    avatar.isShielding = data.isShielding;
-                                    avatar.updateHealthBar();
-                                    avatar.updateShieldBar();
-                                    avatar.setShielding(data.isShielding);
-                                }
-                                break;
+            switch (data.type) {
+                case 'init':
+                    this.sessionId = data.sessionId;
+                    const x = window.innerWidth / 2;
+                    const y = window.innerHeight / 2;
+                    this.avatars.set(data.sessionId, new Avatar(data.sessionId, data.x || x, data.y || y));
+                    gameState.state.isPlaying = true;
+                    this.updatePlayerCount();
+                    break;
+
+                case 'playerJoined':
+                    if (data.sessionId !== this.sessionId) {
+                        if (!this.avatars.has(data.sessionId)) {
+                            const newAvatar = new Avatar(data.sessionId, data.x, data.y);
+                            this.avatars.set(data.sessionId, newAvatar);
+                            newAvatar.health = data.health;
+                            newAvatar.shield = data.shield;
+                            newAvatar.angle = data.angle;
+                            newAvatar.updateHealthBar();
+                            newAvatar.updateShieldBar();
                         }
-                    } catch (error) {
-                        console.error('Message parsing error:', error);
+                        this.updatePlayerCount();
                     }
-                };
-            },
+                    break;
+
+                case 'playerLeft':
+                    if (data.sessionId !== this.sessionId) {
+                        const avatar = this.avatars.get(data.sessionId);
+                        if (avatar) {
+                            avatar.remove();
+                            this.avatars.delete(data.sessionId);
+                            this.updatePlayerCount();
+                        }
+                    }
+                    break;
+
+                case 'position':
+                    if (data.sessionId !== this.sessionId) {
+                        const avatar = this.avatars.get(data.sessionId);
+                        if (avatar) {
+                            avatar.updatePosition(data.x, data.y);
+                            avatar.angle = data.angle;
+                        }
+                    }
+                    break;
+
+                case 'shoot':
+                    if (data.sessionId !== this.sessionId) {
+                        const projectile = new Projectile(
+                            data.x, 
+                            data.y, 
+                            data.angle,
+                            data.sessionId
+                        );
+                        this.projectiles.push(projectile);
+                    }
+                    break;
+
+                case 'damage':
+                    const target = this.avatars.get(data.targetId);
+                    if (target) {
+                        target.takeDamage(data.amount, data.x, data.y);
+                        if (data.sessionId === this.sessionId) {
+                            this.damageDealt += data.amount;
+                        }
+                    }
+                    break;
+
+                case 'playerState':
+                    const avatar = this.avatars.get(data.sessionId);
+                    if (avatar && data.sessionId !== this.sessionId) {
+                        avatar.health = data.health;
+                        avatar.shield = data.shield;
+                        avatar.isShielding = data.isShielding;
+                        avatar.updateHealthBar();
+                        avatar.updateShieldBar();
+                        avatar.setShielding(data.isShielding);
+                    }
+                    break;
+
+                case 'players':
+                    document.getElementById('playerCount').textContent = data.count;
+                    break;
+            }
+        } catch (error) {
+            console.error('Message parsing error:', error);
+        }
+    };
+
+    // Connection closed
+    this.ws.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code);
+        gameState.updateConnectionState(false);
+        
+        // Attempt to reconnect unless it was a normal closure
+        if (event.code !== 1000 && event.code !== 1001) {
+            setTimeout(() => {
+                if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+                    this.setupWebSocket();
+                }
+            }, 3000);
+        }
+    };
+
+    // Connection error
+    this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        gameState.updateConnectionState(false);
+    };
+},
             sendInitMessage() {
                 const message = {
                     type: 'init',
