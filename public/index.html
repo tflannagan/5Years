@@ -680,9 +680,8 @@
             takeDamage(amount, sourceX, sourceY) {
                 if (!Number.isFinite(amount) || amount < 0) return;
             
-                // Calculate damage considering shield
                 if (this.isShielding && this.shield > 0) {
-                    const shieldDamage = amount * 0.5; // 50% damage reduction with shield
+                    const shieldDamage = amount * 0.5;
                     this.shield = Math.max(0, this.shield - shieldDamage);
                     this.updateShieldBar();
                 } else {
@@ -690,20 +689,15 @@
                     this.updateHealthBar();
                 }
             
-                // Visual effects
                 this.element.classList.add('damaged');
                 setTimeout(() => this.element.classList.remove('damaged'), 200);
-            
-                // Create hit effect
                 this.createHitEffect(sourceX, sourceY);
-            
-                // Update UI elements
-                this.updateHealthBar();
-                this.updateShieldBar();
-            
-                // Check for death
+
                 if (this.health <= 0) {
-                    this.element.classList.add('dead');
+                    const deathEvent = new CustomEvent('playerDeath', {
+                        detail: { avatarId: this.id }
+                    });
+                    document.dispatchEvent(deathEvent);
                 }
             }
             createHitEffect(sourceX, sourceY) {
@@ -768,7 +762,7 @@
                 const validPos = InputValidator.validatePosition(this.x, this.y);
                 const bounds = document.querySelector('.game-container').getBoundingClientRect();
                 
-                // Check if projectile is out of bounds
+            
                 const isOutOfBounds = this.x < 0 || this.x > bounds.width || 
                                      this.y < 0 || this.y > bounds.height;
             
@@ -809,12 +803,24 @@
             cooldownTimer: null,
             frameId: null,
             disconnectTimeout: null,
-
             init() {
                 this.setupEventListeners();
                 this.setupWebSocket();
                 this.startGameLoop();
                 
+                document.addEventListener('playerDeath', (event) => {
+                    if (event.detail.avatarId === this.sessionId) {
+                        this.handlePlayerDeath();
+                    }
+                });
+                
+
+                const respawnButton = document.querySelector('.modal-button');
+                if (respawnButton) {
+                    respawnButton.removeEventListener('click', this.respawn);
+                    respawnButton.addEventListener('click', () => this.respawn());
+                }
+            
                 window.addEventListener('beforeunload', () => {
                     this.cleanup();
                 });
@@ -842,10 +848,10 @@
                 });
             },
 
-// Replace the game.setupWebSocket method
+
 setupWebSocket() {
     if (this.ws) {
-        // Clean up existing connection
+     
         this.cleanup();
     }
 
@@ -858,11 +864,11 @@ setupWebSocket() {
     console.log(`Connecting to WebSocket at ${wsUrl}`);
     this.ws = new WebSocket(wsUrl);
 
-    // Connection opened
+
     this.ws.onopen = () => {
         console.log('WebSocket connected');
         gameState.updateConnectionState(true);
-        // Send initial state
+    
         if (this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
                 type: 'init',
@@ -873,7 +879,6 @@ setupWebSocket() {
         }
     };
 
-    // Listen for messages
     this.ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -967,12 +972,10 @@ setupWebSocket() {
         }
     };
 
-    // Connection closed
     this.ws.onclose = (event) => {
         console.log('WebSocket connection closed:', event.code);
         gameState.updateConnectionState(false);
         
-        // Attempt to reconnect unless it was a normal closure
         if (event.code !== 1000 && event.code !== 1001) {
             setTimeout(() => {
                 if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
@@ -982,7 +985,6 @@ setupWebSocket() {
         }
     };
 
-    // Connection error
     this.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         gameState.updateConnectionState(false);
@@ -1093,16 +1095,17 @@ setupWebSocket() {
                 
                 const target = this.avatars.get(data.targetId);
                 if (target) {
-                    // Apply damage to avatar
                     target.takeDamage(data.amount, data.x, data.y);
                     
-                    // Update HUD if it's the current player
                     if (data.targetId === this.sessionId) {
                         this.updateHealthBar(target.health);
                         this.updateShieldBar(target.shield);
+                        
+                        if (target.health <= 0) {
+                            this.handlePlayerDeath();
+                        }
                     }
             
-                    // Track damage dealt if we're the shooter
                     if (data.sourceId === this.sessionId) {
                         this.damageDealt += data.amount;
                     }
@@ -1219,18 +1222,30 @@ setupWebSocket() {
 
             handlePlayerDeath() {
                 const survivalTime = Math.floor((Date.now() - this.startTime) / 1000);
+                
                 document.getElementById('survivalTime').textContent = survivalTime;
                 document.getElementById('damageDealt').textContent = Math.round(this.damageDealt);
                 
                 const gameOverModal = document.getElementById('gameOverModal');
                 gameOverModal.classList.add('active');
                 
-                this.ws.send({
-                    type: 'death',
-                    sessionId: this.sessionId,
-                    survivalTime,
-                    damageDealt: this.damageDealt
-                });
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'death',
+                        sessionId: this.sessionId,
+                        survivalTime,
+                        damageDealt: this.damageDealt,
+                        timestamp: Date.now()
+                    }));
+                }
+                
+                const avatar = this.avatars.get(this.sessionId);
+                if (avatar) {
+                    avatar.remove();
+                    this.avatars.delete(this.sessionId);
+                }
+            
+                gameState.state.isPlaying = false;
             },
 
             shoot() {
@@ -1239,19 +1254,16 @@ setupWebSocket() {
                 const avatar = this.avatars.get(this.sessionId);
                 if (!avatar) return;
             
-                // Calculate projectile spawn position offset from avatar center
-                const spawnOffset = 20; // Distance from avatar center
+                const spawnOffset = 20;
                 const projectile = new Projectile(
                     avatar.x + Math.cos(avatar.angle) * spawnOffset,
                     avatar.y + Math.sin(avatar.angle) * spawnOffset,
                     avatar.angle,
                     this.sessionId
                 );
-                
-                // Add projectile to local game state
+
                 this.projectiles.push(projectile);
             
-                // Send shoot event to server
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({
                         type: 'shoot',
@@ -1322,7 +1334,7 @@ setupWebSocket() {
             
                                 if (distance < 20) {
                                     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                                        // Send damage event to server
+                                       
                                         this.ws.send(JSON.stringify({
                                             type: 'damage',
                                             sessionId: this.sessionId,
@@ -1331,8 +1343,7 @@ setupWebSocket() {
                                             x: projectile.x,
                                             y: projectile.y
                                         }));
-            
-                                        // Apply visual hit effect immediately
+
                                         avatar.takeDamage(projectile.damage, projectile.x, projectile.y);
                                     }
                                     projectile.remove();
@@ -1403,21 +1414,20 @@ setupWebSocket() {
             },
 
             respawn() {
-                if (!this.sessionId || !this.ws) return;
+                if (!this.sessionId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
                 
                 const gameOverModal = document.getElementById('gameOverModal');
                 gameOverModal.classList.remove('active');
                 
                 this.clearTimers();
                 this.canUseShield = true;
+                this.startTime = Date.now();
+                this.damageDealt = 0;
                 
                 const shieldText = document.querySelector('#shieldText');
                 if (shieldText) {
                     shieldText.style.color = '#fff';
                 }
-                
-                this.startTime = Date.now();
-                this.damageDealt = 0;
                 
                 const container = document.querySelector('.game-container');
                 const padding = 100;
@@ -1425,18 +1435,27 @@ setupWebSocket() {
                     x: padding + Math.random() * (container.offsetWidth - padding * 2),
                     y: padding + Math.random() * (container.offsetHeight - padding * 2)
                 };
+                       
+                if (this.avatars.has(this.sessionId)) {
+                    const oldAvatar = this.avatars.get(this.sessionId);
+                    oldAvatar.remove();
+                    this.avatars.delete(this.sessionId);
+                }
                 
                 const validPos = InputValidator.validatePosition(spawnArea.x, spawnArea.y);
                 const newAvatar = new Avatar(this.sessionId, validPos.x, validPos.y);
                 this.avatars.set(this.sessionId, newAvatar);
                 
+            
                 newAvatar.health = 100;
                 newAvatar.shield = 100;
                 
+           
                 this.updateHealthBar(100);
                 this.updateShieldBar(100);
                 
-                this.ws.send({
+             
+                this.ws.send(JSON.stringify({
                     type: 'respawn',
                     sessionId: this.sessionId,
                     x: validPos.x,
@@ -1444,8 +1463,8 @@ setupWebSocket() {
                     health: 100,
                     shield: 100,
                     timestamp: Date.now()
-                });
-
+                }));
+            
                 gameState.state.isPlaying = true;
             },
 
