@@ -657,29 +657,19 @@
             }
 
             updatePosition(x, y) {
-                const now = Date.now();
-                const timeDelta = Math.min((now - this.lastUpdate) / 1000, 0.1);
-                this.lastUpdate = now;
-            
                 const validPos = InputValidator.validatePosition(x, y);
-                this.targetX = validPos.x;
-                this.targetY = validPos.y;
+                this.x = validPos.x;
+                this.y = validPos.y;
             
-                const interpolationSpeed = 0.85;
-                this.x += (this.targetX - this.x) * interpolationSpeed;
-                this.y += (this.targetY - this.y) * interpolationSpeed;
-            
-                this.isMoving = Math.abs(this.targetX - this.x) > 0.1 || Math.abs(this.targetY - this.y) > 0.1;
-                this.element.classList.toggle('moving', this.isMoving);
-            
-                this.element.style.transform = `translate(-50%, -50%)`;
                 this.element.style.left = `${this.x}px`;
                 this.element.style.top = `${this.y}px`;
             
                 if (this.angle !== undefined) {
                     const bodyRotation = this.angle * (180 / Math.PI);
                     const avatarBody = this.element.querySelector('.avatar-body');
-                    avatarBody.style.transform = `rotate(${bodyRotation}deg)`;
+                    if (avatarBody) {
+                        avatarBody.style.transform = `rotate(${bodyRotation}deg)`;
+                    }
                 }
             }
 
@@ -755,22 +745,23 @@
 
             update(delta) {
                 if (!Number.isFinite(delta) || delta <= 0) return false;
-
+            
+                const prevX = this.x;
+                const prevY = this.y;
+            
                 this.x += Math.cos(this.angle) * this.speed * delta;
                 this.y += Math.sin(this.angle) * this.speed * delta;
                 
-                const validPos = InputValidator.validatePosition(this.x, this.y);
-                const hasMovedPosition = validPos.x !== this.x || validPos.y !== this.y;
-                
-                this.x = validPos.x;
-                this.y = validPos.y;
-                
-                this.updatePosition();
-                
                 const bounds = document.querySelector('.game-container').getBoundingClientRect();
-                return this.x >= 0 && this.x <= bounds.width && 
-                       this.y >= 0 && this.y <= bounds.height && 
-                       !hasMovedPosition;
+                const isOutOfBounds = this.x < 0 || this.x > bounds.width || 
+                                     this.y < 0 || this.y > bounds.height;
+            
+                if (!isOutOfBounds) {
+                    this.updatePosition();
+                    return true;
+                }
+            
+                return false;
             }
 
             updatePosition() {
@@ -833,76 +824,32 @@
             setupWebSocket() {
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
-              
+                
                 this.ws = new WebSocket(wsUrl);
                 
                 this.ws.onopen = () => {
-                  this.ws.send(JSON.stringify({
-                    type: 'init',
-                    screenWidth: window.innerWidth,
-                    screenHeight: window.innerHeight,
-                    timestamp: Date.now()
-                  }));
+                    gameState.updateConnectionState(true);
+                    this.sendInitMessage();
                 };
-              
-                this.ws.onmessage = (event) => {
-                  try {
-                    const data = JSON.parse(event.data);
-                    
-                    switch (data.type) {
-                      case 'init':
-                        this.sessionId = data.sessionId;
-                        const x = window.innerWidth / 2;
-                        const y = window.innerHeight / 2;
-                        this.avatars.set(data.sessionId, new Avatar(data.sessionId, x, y));
-                        break;
-              
-                      case 'playerJoined':
-                        if (data.sessionId !== this.sessionId) {
-                          this.avatars.set(data.sessionId, new Avatar(data.sessionId, data.x, data.y));
-                          const avatar = this.avatars.get(data.sessionId);
-                          if (avatar) {
-                            avatar.health = data.health;
-                            avatar.shield = data.shield;
-                            avatar.angle = data.angle;
-                            avatar.updateHealthBar();
-                            avatar.updateShieldBar();
-                          }
-                        }
-                        this.updatePlayerCount();
-                        break;
-              
-                      case 'playerLeft':
-                        if (data.sessionId !== this.sessionId) {
-                          const avatar = this.avatars.get(data.sessionId);
-                          if (avatar) {
-                            avatar.remove();
-                            this.avatars.delete(data.sessionId);
-                          }
-                          this.updatePlayerCount();
-                        }
-                        break;
-              
-                      case 'position':
-                        if (data.sessionId !== this.sessionId) {
-                          const avatar = this.avatars.get(data.sessionId);
-                          if (avatar) {
-                            avatar.updatePosition(data.x, data.y);
-                            avatar.angle = data.angle;
-                          }
-                        }
-                        break;
-                    }
-                  } catch (error) {
-                    this.ws.close();
-                  }
-                };
-              
+            
                 this.ws.onclose = () => {
-                  setTimeout(() => this.setupWebSocket(), 1000);
+                    gameState.updateConnectionState(false);
+                    setTimeout(() => this.setupWebSocket(), 1000);
                 };
-              },
-
+            
+                this.ws.onerror = () => {
+                    gameState.updateConnectionState(false);
+                };
+            
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleMessage(data);
+                    } catch (error) {
+                        this.ws.close();
+                    }
+                };
+            },
             sendInitMessage() {
                 const message = {
                     type: 'init',
@@ -1143,7 +1090,7 @@
                 
                 const avatar = this.avatars.get(this.sessionId);
                 if (!avatar) return;
-
+            
                 const projectile = new Projectile(
                     avatar.x + Math.cos(avatar.angle) * 20,
                     avatar.y + Math.sin(avatar.angle) * 20,
@@ -1152,55 +1099,63 @@
                 );
                 
                 this.projectiles.push(projectile);
-                this.ws.send({
-                    type: 'shoot',
-                    sessionId: this.sessionId,
-                    x: projectile.x,
-                    y: projectile.y,
-                    angle: avatar.angle
-                });
+            
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'shoot',
+                        sessionId: this.sessionId,
+                        x: projectile.x,
+                        y: projectile.y,
+                        angle: avatar.angle,
+                        timestamp: Date.now()
+                    }));
+                }
             },
-
             update(delta) {
                 if (!this.sessionId || !gameState.state.isPlaying) return;
-
+            
                 const avatar = this.avatars.get(this.sessionId);
                 if (avatar) {
                     let moved = false;
-                    const speed = 400 * delta; 
-
+                    const speed = 400 * delta;
+                    let newX = avatar.x;
+                    let newY = avatar.y;
+            
                     if (this.keys.has('w') || this.keys.has('arrowup')) {
-                        avatar.y = Math.max(20, avatar.y - speed);
+                        newY = Math.max(20, avatar.y - speed);
                         moved = true;
                     }
                     if (this.keys.has('s') || this.keys.has('arrowdown')) {
-                        avatar.y = Math.min(window.innerHeight - 20, avatar.y + speed);
+                        newY = Math.min(window.innerHeight - 20, avatar.y + speed);
                         moved = true;
                     }
                     if (this.keys.has('a') || this.keys.has('arrowleft')) {
-                        avatar.x = Math.max(20, avatar.x - speed);
+                        newX = Math.max(20, avatar.x - speed);
                         moved = true;
                     }
                     if (this.keys.has('d') || this.keys.has('arrowright')) {
-                        avatar.x = Math.min(window.innerWidth - 20, avatar.x + speed);
+                        newX = Math.min(window.innerWidth - 20, avatar.x + speed);
                         moved = true;
                     }
-
-                    if (moved && gameState.canSendMessage('position')) {
-                        avatar.updatePosition(avatar.x, avatar.y);
-                        this.sendPosition();
+            
+                    if (moved) {
+                        avatar.x = newX;
+                        avatar.y = newY;
+                        avatar.updatePosition(newX, newY);
+                        if (gameState.canSendMessage('position')) {
+                            this.sendPosition();
+                        }
                     }
-
+            
                     if (!avatar.isShielding && avatar.shield < 100) {
                         avatar.shield = Math.min(100, avatar.shield + 20 * delta);
                         avatar.updateShieldBar();
                         this.updateShieldBar(avatar.shield);
                     }
                 }
-
+            
                 this.updateProjectiles(delta);
             },
-
             updateProjectiles(delta) {
                 this.projectiles = this.projectiles.filter(projectile => {
                     let shouldKeep = projectile.update(delta);
@@ -1429,34 +1384,19 @@
 
             sendPosition() {
                 if (!this.sessionId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-  
+            
                 const avatar = this.avatars.get(this.sessionId);
                 if (!avatar) return;
-              
-                const minChange = 0.1;
-                const hasSignificantChange = 
-                  !avatar.lastSentX || 
-                  !avatar.lastSentY || 
-                  Math.abs(avatar.x - avatar.lastSentX) > minChange || 
-                  Math.abs(avatar.y - avatar.lastSentY) > minChange || 
-                  Math.abs(avatar.angle - (avatar.lastSentAngle || 0)) > 0.1;
-              
-                if (hasSignificantChange) {
-                  avatar.lastSentX = avatar.x;
-                  avatar.lastSentY = avatar.y;
-                  avatar.lastSentAngle = avatar.angle;
-              
-                  this.ws.send(JSON.stringify({
+            
+                this.ws.send(JSON.stringify({
                     type: 'position',
                     sessionId: this.sessionId,
                     x: avatar.x,
                     y: avatar.y,
                     angle: avatar.angle,
                     timestamp: Date.now()
-                  }));
-                }
-              },
-
+                }));
+            },
             updateHealthBar(health) {
                 const healthFill = document.getElementById('healthFill');
                 const healthText = document.getElementById('healthText');
