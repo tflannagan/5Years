@@ -464,12 +464,16 @@
                 const connectionStatus = document.querySelector('.connection-status');
                 const connectionText = document.getElementById('connectionText');
                 
-                connectionStatus.classList.add('visible');
-                connectionText.textContent = isConnected ? 'Connected' : 'Reconnecting...';
-                
-                setTimeout(() => {
-                    connectionStatus.classList.remove('visible');
-                }, 2000);
+                if (connectionStatus && connectionText) {
+                    connectionStatus.classList.add('visible');
+                    connectionText.textContent = isConnected ? 'Connected' : 'Reconnecting...';
+                    
+                    if (isConnected) {
+                        setTimeout(() => {
+                            connectionStatus.classList.remove('visible');
+                        }, 2000);
+                    }
+                }
             }
 
             showError(message) {
@@ -797,6 +801,11 @@
                 this.setupEventListeners();
                 this.setupWebSocket();
                 this.startGameLoop();
+                
+                // Add window unload handler
+                window.addEventListener('beforeunload', () => {
+                    this.cleanup();
+                });
             },
 
             setupEventListeners() {
@@ -822,31 +831,128 @@
             },
 
             setupWebSocket() {
-                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
-                
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                const wsUrl = `${protocol}//${host}/ws`;
+            
+                if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+                    this.ws.close();
+                }
+            
                 this.ws = new WebSocket(wsUrl);
-                
+            
                 this.ws.onopen = () => {
                     gameState.updateConnectionState(true);
-                    this.sendInitMessage();
+                    this.ws.send(JSON.stringify({
+                        type: 'init',
+                        screenWidth: window.innerWidth,
+                        screenHeight: window.innerHeight,
+                        timestamp: Date.now()
+                    }));
                 };
             
-                this.ws.onclose = () => {
+                this.ws.onclose = (event) => {
                     gameState.updateConnectionState(false);
-                    setTimeout(() => this.setupWebSocket(), 1000);
+                    
+                    // Only attempt reconnect if it wasn't a normal closure
+                    if (event.code !== 1000 && event.code !== 1001) {
+                        setTimeout(() => {
+                            if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+                                this.setupWebSocket();
+                            }
+                        }, 3000);
+                    }
                 };
             
-                this.ws.onerror = () => {
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
                     gameState.updateConnectionState(false);
                 };
             
                 this.ws.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        this.handleMessage(data);
+                        
+                        switch (data.type) {
+                            case 'init':
+                                this.sessionId = data.sessionId;
+                                const x = window.innerWidth / 2;
+                                const y = window.innerHeight / 2;
+                                this.avatars.set(data.sessionId, new Avatar(data.sessionId, x, y));
+                                gameState.state.isPlaying = true;
+                                this.updatePlayerCount();
+                                break;
+            
+                            case 'playerJoined':
+                                if (data.sessionId !== this.sessionId) {
+                                    if (!this.avatars.has(data.sessionId)) {
+                                        const avatar = new Avatar(data.sessionId, data.x, data.y);
+                                        this.avatars.set(data.sessionId, avatar);
+                                        avatar.health = data.health;
+                                        avatar.shield = data.shield;
+                                        avatar.angle = data.angle;
+                                        avatar.updateHealthBar();
+                                        avatar.updateShieldBar();
+                                    }
+                                    this.updatePlayerCount();
+                                }
+                                break;
+            
+                            case 'playerLeft':
+                                if (data.sessionId !== this.sessionId) {
+                                    const avatar = this.avatars.get(data.sessionId);
+                                    if (avatar) {
+                                        avatar.remove();
+                                        this.avatars.delete(data.sessionId);
+                                        this.updatePlayerCount();
+                                    }
+                                }
+                                break;
+            
+                            case 'position':
+                                if (data.sessionId !== this.sessionId) {
+                                    const avatar = this.avatars.get(data.sessionId);
+                                    if (avatar) {
+                                        avatar.updatePosition(data.x, data.y);
+                                        avatar.angle = data.angle;
+                                    }
+                                }
+                                break;
+            
+                            case 'shoot':
+                                if (data.sessionId !== this.sessionId) {
+                                    const shooter = this.avatars.get(data.sessionId);
+                                    if (shooter) {
+                                        const projectile = new Projectile(data.x, data.y, data.angle, data.sessionId);
+                                        this.projectiles.push(projectile);
+                                    }
+                                }
+                                break;
+            
+                            case 'damage':
+                                const target = this.avatars.get(data.targetId);
+                                if (target) {
+                                    target.takeDamage(data.amount, data.x, data.y);
+                                    if (data.sessionId === this.sessionId) {
+                                        this.damageDealt += data.amount;
+                                    }
+                                }
+                                break;
+            
+                            case 'playerState':
+                                const avatar = this.avatars.get(data.sessionId);
+                                if (avatar && data.sessionId !== this.sessionId) {
+                                    avatar.health = data.health;
+                                    avatar.shield = data.shield;
+                                    avatar.isShielding = data.isShielding;
+                                    avatar.updateHealthBar();
+                                    avatar.updateShieldBar();
+                                    avatar.setShielding(data.isShielding);
+                                }
+                                break;
+                        }
                     } catch (error) {
-                        this.ws.close();
+                        console.error('Message parsing error:', error);
                     }
                 };
             },
@@ -1207,17 +1313,25 @@
             cleanup() {
                 if (this.frameId) {
                     cancelAnimationFrame(this.frameId);
+                    this.frameId = null;
                 }
                 
                 if (this.ws) {
-                    this.ws.send({
-                        type: 'disconnect',
-                        sessionId: this.sessionId
-                    });
-                    this.ws.close();
+                    if (this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'disconnect',
+                            sessionId: this.sessionId,
+                            timestamp: Date.now()
+                        }));
+                    }
+                    this.ws.close(1000, 'Normal closure');
                 }
-
+            
                 this.clearTimers();
+                this.avatars.forEach(avatar => avatar.remove());
+                this.avatars.clear();
+                this.projectiles.forEach(projectile => projectile.remove());
+                this.projectiles = [];
             },
 
             clearTimers() {
