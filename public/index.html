@@ -802,7 +802,6 @@
                 this.setupWebSocket();
                 this.startGameLoop();
                 
-                // Add window unload handler
                 window.addEventListener('beforeunload', () => {
                     this.cleanup();
                 });
@@ -854,7 +853,7 @@
                 this.ws.onclose = (event) => {
                     gameState.updateConnectionState(false);
                     
-                    // Only attempt reconnect if it wasn't a normal closure
+                
                     if (event.code !== 1000 && event.code !== 1001) {
                         setTimeout(() => {
                             if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
