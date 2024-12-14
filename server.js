@@ -122,9 +122,7 @@ class GameState {
     const now = Date.now();
     const timeSinceLastBroadcast = now - client.lastBroadcastTime;
 
-    // Rate limit position updates
     if (timeSinceLastBroadcast < 16) {
-      // ~60 FPS
       return false;
     }
 
@@ -172,7 +170,6 @@ class GameState {
 const app = express();
 const server = require("http").createServer(app);
 
-// Updated CORS and security settings
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -189,7 +186,6 @@ app.use(
   })
 );
 
-// Updated CORS middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (config.ALLOWED_ORIGINS.includes("*")) {
@@ -215,7 +211,6 @@ app.use(
 
 app.use(express.static(path.join(__dirname, "public")));
 
-// Updated WebSocket server configuration
 const wss = new WebSocket.Server({
   server,
   path: "/ws",
@@ -271,7 +266,6 @@ function updatePlayerCount() {
   });
 }
 
-// Updated connection handler
 wss.on("connection", (ws, req) => {
   ws.isAlive = true;
   let clientId = null;
@@ -328,7 +322,6 @@ wss.on("connection", (ws, req) => {
             })
           );
 
-          // Send existing players to new player
           gameState.clients.forEach((existingClient, existingId) => {
             if (existingId !== clientId) {
               ws.send(
@@ -346,7 +339,6 @@ wss.on("connection", (ws, req) => {
             }
           });
 
-          // Broadcast new player to others
           broadcastToOthers(
             {
               type: "playerJoined",
@@ -432,7 +424,6 @@ wss.on("connection", (ws, req) => {
               y: target.y,
             });
 
-            // Send damage notification to the target
             target.ws.send(
               JSON.stringify({
                 type: "damage",
@@ -496,14 +487,11 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// Start server
 server.listen(config.PORT, () => {
   logger.info(`Game server running on port ${config.PORT}`);
   logger.info(`Environment: ${config.NODE_ENV}`);
 });
 
-// Cleanup intervals
-// Cleanup intervals
 const cleanupInterval = setInterval(() => {
   try {
     gameState.cleanup();
@@ -513,7 +501,6 @@ const cleanupInterval = setInterval(() => {
   }
 }, config.CLEANUP_INTERVAL);
 
-// Global heartbeat check for all clients
 const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) return ws.terminate();
@@ -522,17 +509,13 @@ const heartbeatInterval = setInterval(() => {
   });
 }, config.HEARTBEAT_INTERVAL);
 
-// Graceful shutdown handler
 async function gracefulShutdown(signal) {
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
-  // Clear intervals
   clearInterval(cleanupInterval);
   clearInterval(heartbeatInterval);
 
-  // Close HTTP server
   server.close(() => {
-    // Close all WebSocket connections
     wss.clients.forEach((client) => {
       try {
         client.close(1001, "Server shutting down");
@@ -541,11 +524,9 @@ async function gracefulShutdown(signal) {
       }
     });
 
-    // Close WebSocket server
     wss.close(() => {
       logger.info("WebSocket server closed");
 
-      // Close logger
       logger.on("finish", () => {
         process.exit(0);
       });
@@ -553,14 +534,12 @@ async function gracefulShutdown(signal) {
     });
   });
 
-  // Force shutdown after timeout
   setTimeout(() => {
     logger.error("Forced shutdown after timeout");
     process.exit(1);
   }, 10000);
 }
 
-// Process event handlers
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
 
@@ -574,7 +553,6 @@ process.on("unhandledRejection", (reason, promise) => {
   gracefulShutdown("UNHANDLED_REJECTION");
 });
 
-// Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
@@ -586,7 +564,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Game status endpoint
 app.get("/status", (req, res) => {
   const status = {
     server: {
@@ -607,7 +584,6 @@ app.get("/status", (req, res) => {
   res.json(status);
 });
 
-// WebSocket upgrade endpoint
 app.get("/ws", (req, res) => {
   res.set({
     Upgrade: "websocket",
@@ -617,7 +593,6 @@ app.get("/ws", (req, res) => {
   res.status(426).send("Upgrade Required");
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   logger.error("Express error:", err);
   res.status(500).json({
@@ -626,7 +601,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Export server components
 module.exports = {
   server,
   wss,

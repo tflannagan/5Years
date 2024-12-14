@@ -95,28 +95,7 @@
             color: #666;
         }
 
-        .health-bar, .shield-bar {
-            height: 8px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 4px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.3) inset;
-        }
 
-        .health-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4CAF50, #8BC34A);
-            transition: width 0.2s ease-out;
-            box-shadow: 0 0 10px rgba(76,175,80,0.5);
-        }
-
-        .shield-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #2196F3, #03A9F4);
-            transition: width 0.2s ease-out;
-            box-shadow: 0 0 10px rgba(33,150,243,0.5);
-        }
 
         .projectile {
             position: absolute;
@@ -402,14 +381,6 @@
         <canvas id="gameCanvas"></canvas>
         <div class="stats-panel">
             <div>Online: <span id="playerCount">0</span></div>
-            <div>Health: <span id="healthText">100</span></div>
-            <div class="health-bar">
-                <div class="health-fill" id="healthFill" style="width: 100%"></div>
-            </div>
-            <div>Shield: <span id="shieldText">100</span></div>
-            <div class="shield-bar">
-                <div class="shield-fill" id="shieldFill" style="width: 100%"></div>
-            </div>
         </div>
         <div class="game-over-modal" id="gameOverModal">
             <h2>Battle Over!</h2>
@@ -1583,26 +1554,6 @@ setupWebSocket() {
                     timestamp: Date.now()
                 }));
             },
-            updateHealthBar(health) {
-                const healthFill = document.getElementById('healthFill');
-                const healthText = document.getElementById('healthText');
-                if (healthFill && healthText) {
-                    const validHealth = Math.max(0, Math.min(100, health));
-                    healthFill.style.width = `${validHealth}%`;
-                    healthText.textContent = Math.round(validHealth);
-                }
-            },
-
-            updateShieldBar(shield) {
-                const shieldFill = document.getElementById('shieldFill');
-                const shieldText = document.getElementById('shieldText');
-                if (shieldFill && shieldText) {
-                    const validShield = Math.max(0, Math.min(100, shield));
-                    shieldFill.style.width = `${validShield}%`;
-                    shieldText.textContent = Math.round(validShield);
-                }
-            },
-
             updatePlayerCount() {
                 const playerCount = document.getElementById('playerCount');
                 if (playerCount) {
