@@ -95,7 +95,25 @@
             color: #666;
         }
 
+        .stats-panel .health-bar,
+        .stats-panel .shield-bar {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #fff;
+        }
 
+        .stats-panel .health-bar {
+            color: #4CAF50;
+        }
+
+        .stats-panel .shield-bar {
+            color: #2196F3;
+        }
+
+        .stats-panel .health-value,
+        .stats-panel .shield-value {
+            font-weight: bold;
+        }
 
         .projectile {
             position: absolute;
@@ -1330,6 +1348,48 @@ setupWebSocket() {
                     }
                     return shouldKeep;
                 });
+            },
+
+            updateHealthBar(health) {
+                if (!this.sessionId) return;
+                
+                const healthBar = document.querySelector('.stats-panel .health-bar');
+                if (!healthBar) {
+                
+                    const statsPanel = document.querySelector('.stats-panel');
+                    const healthBarHTML = `
+                        <div class="health-bar">
+                            Health: <span class="health-value">${health}</span>
+                        </div>
+                    `;
+                    statsPanel.insertAdjacentHTML('beforeend', healthBarHTML);
+                } else {
+                    const healthValue = healthBar.querySelector('.health-value');
+                    if (healthValue) {
+                        healthValue.textContent = Math.round(health);
+                    }
+                }
+            },
+            
+            updateShieldBar(shield) {
+                if (!this.sessionId) return;
+                
+                const shieldBar = document.querySelector('.stats-panel .shield-bar');
+                if (!shieldBar) {
+                    
+                    const statsPanel = document.querySelector('.stats-panel');
+                    const shieldBarHTML = `
+                        <div class="shield-bar">
+                            Shield: <span class="shield-value">${shield}</span>
+                        </div>
+                    `;
+                    statsPanel.insertAdjacentHTML('beforeend', shieldBarHTML);
+                } else {
+                    const shieldValue = shieldBar.querySelector('.shield-value');
+                    if (shieldValue) {
+                        shieldValue.textContent = Math.round(shield);
+                    }
+                }
             },
 
             startGameLoop() {
