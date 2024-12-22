@@ -815,13 +815,18 @@
         }
         class Projectile {
             constructor(x, y, angle, ownerId) {
-                const validPos = InputValidator.validatePosition(x, y);
-                this.x = validPos.x;
-                this.y = validPos.y;
-                this.angle = InputValidator.validateAngle(angle);
-                this.ownerId = InputValidator.sanitizeId(ownerId);
-                this.speed = 600;
+                this.x = Math.max(0, Math.min(MAP_WIDTH, x));
+                this.y = Math.max(0, Math.min(MAP_HEIGHT, y));
+                this.angle = angle;
+                this.ownerId = ownerId;
+                this.speed = 1000;
                 this.damage = 10;
+                this.lastX = this.x;
+                this.lastY = this.y;
+                this.alive = true;
+                this.distanceTraveled = 0;
+                this.maxDistance = 2000;
+                this.radius = 4;
                 this.createProjectileElement();
             }
         
@@ -832,43 +837,87 @@
                 this.updatePosition();
             }
         
-            update(delta) {
-                if (!Number.isFinite(delta) || delta <= 0) return false;
-                
-                const oldX = this.x;
-                const oldY = this.y;
-                
-                this.x += Math.cos(this.angle) * this.speed * delta;
-                this.y += Math.sin(this.angle) * this.speed * delta;
-                
-                const isOutOfBounds = this.x < 0 || this.x > MAP_WIDTH || 
-                                     this.y < 0 || this.y > MAP_HEIGHT;
-                
-                if (!isOutOfBounds) {
-                    const dx = this.x - oldX;
-                    const dy = this.y - oldY;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance > 100) {
-                        this.x = oldX + (dx / distance) * 100;
-                        this.y = oldY + (dy / distance) * 100;
-                    }
-                    
-                    this.updatePosition();
-                    return true;
-                }
-                
-                return false;
+            getScreenPosition() {
+                return {
+                    x: Math.round(this.x - cameraX),
+                    y: Math.round(this.y - cameraY)
+                };
             }
         
             updatePosition() {
-                const screenX = this.x - cameraX;
-                const screenY = this.y - cameraY;
-                this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
+                if (!this.element) return;
+                const screenPos = this.getScreenPosition();
+                this.element.style.transform = `translate(${screenPos.x}px, ${screenPos.y}px)`;
+            }
+        
+            update(delta, avatars) {
+                if (!this.alive) return false;
+                
+                this.lastX = this.x;
+                this.lastY = this.y;
+                
+                const moveX = Math.cos(this.angle) * this.speed * delta;
+                const moveY = Math.sin(this.angle) * this.speed * delta;
+                
+                this.x += moveX;
+                this.y += moveY;
+                
+                const distanceThisFrame = Math.sqrt(moveX * moveX + moveY * moveY);
+                this.distanceTraveled += distanceThisFrame;
+        
+                if (this.x < 0 || this.x > MAP_WIDTH || 
+                    this.y < 0 || this.y > MAP_HEIGHT || 
+                    this.distanceTraveled > this.maxDistance) {
+                    this.alive = false;
+                    return false;
+                }
+        
+                const collision = this.checkCollisions(avatars);
+                if (collision) {
+                    this.alive = false;
+                    return false;
+                }
+        
+                this.updatePosition();
+                return true;
+            }
+        
+            checkCollisions(avatars) {
+                for (const [id, avatar] of avatars) {
+                    if (id !== this.ownerId) {
+                        const dx = avatar.x - this.x;
+                        const dy = avatar.y - this.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < 20) {
+                            return {
+                                avatarId: id,
+                                x: this.x,
+                                y: this.y,
+                                distance
+                            };
+                        }
+                    }
+                }
+                return null;
+            }
+        
+            interpolatePositions(progress) {
+                this.x = this.lastX + (this.x - this.lastX) * progress;
+                this.y = this.lastY + (this.y - this.lastY) * progress;
+                this.updatePosition();
+            }
+        
+            destroy() {
+                this.alive = false;
+                this.remove();
             }
         
             remove() {
-                this.element.remove();
+                if (this.element && this.element.parentNode) {
+                    this.element.parentNode.removeChild(this.element);
+                    this.element = null;
+                }
             }
         }
 
@@ -1281,23 +1330,26 @@
 
             handleDamageMessage(data) {
                 if (!this.validateMessageData(data)) return;
-    
+                
                 const target = this.avatars.get(data.targetId);
-                if (target) {
-                    const oldHealth = target.health;
-                    target.takeDamage(data.amount, data.x, data.y);
+                if (!target) return;
+                
+                const damage = Math.min(100, Math.max(0, Number(data.amount) || 0));
+                
+                if (data.targetId === this.sessionId) {
+                    const didDie = target.takeDamage(damage, data.x, data.y);
+                    this.updateHealthBar(target.health);
+                    this.updateShieldBar(target.shield);
                     
-                    if (data.targetId === this.sessionId) {
-                        if (oldHealth > 0 && target.health <= 0) {
-                            this.handlePlayerDeath();
-                        }
-                        this.updateHealthBar(target.health);
-                        this.updateShieldBar(target.shield);
+                    if (didDie) {
+                        this.handlePlayerDeath();
                     }
-            
-                    if (data.sourceId === this.sessionId) {
-                        this.damageDealt += data.amount;
-                    }
+                } else {
+                    target.takeDamage(damage, data.x, data.y);
+                }
+                
+                if (data.sourceId === this.sessionId) {
+                    this.damageDealt += damage;
                 }
             },
 
@@ -1461,35 +1513,30 @@
                 this.projectiles = [];
             },
 
-            shoot() {  if (!this.sessionId || !gameState.canSendMessage('shoot')) return;
-    
-            const avatar = this.avatars.get(this.sessionId);
-            if (!avatar) return;
-        
-            const spawnOffset = 30;
-            const spawnX = avatar.x + Math.cos(avatar.angle) * spawnOffset;
-            const spawnY = avatar.y + Math.sin(avatar.angle) * spawnOffset;
-        
-            const projectile = new Projectile(
-                spawnX,
-                spawnY,
-                avatar.angle,
-                this.sessionId
-            );
-        
-            this.projectiles.push(projectile);
-        
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({
-                    type: 'shoot',
-                    sessionId: this.sessionId,
-                    x: spawnX,
-                    y: spawnY,
-                    angle: avatar.angle,
-                    timestamp: Date.now()
-                }));
-            }
-        },
+            shoot() {
+                if (!this.sessionId || !gameState.canSendMessage('shoot')) return;
+                
+                const avatar = this.avatars.get(this.sessionId);
+                if (!avatar) return;
+            
+                const spawnOffset = 30;
+                const spawnX = avatar.x + Math.cos(avatar.angle) * spawnOffset;
+                const spawnY = avatar.y + Math.sin(avatar.angle) * spawnOffset;
+                
+                const projectile = new Projectile(spawnX, spawnY, avatar.angle, this.sessionId);
+                this.projectiles.push(projectile);
+                
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'shoot',
+                        sessionId: this.sessionId,
+                        x: spawnX,
+                        y: spawnY,
+                        angle: avatar.angle,
+                        timestamp: Date.now()
+                    }));
+                }
+            },
             
             update(delta) {
                 if (!this.sessionId || !gameState.state.isPlaying) return;
@@ -1539,46 +1586,45 @@
             },
             
             updateProjectiles(delta) {
-                this.projectiles = this.projectiles.filter(projectile => {
-                    let shouldKeep = projectile.update(delta);
+                const projectilesToRemove = [];
+                const hits = [];
+                
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const projectile = this.projectiles[i];
+                    const collision = projectile.checkCollisions(this.avatars);
                     
-                    if (shouldKeep) {
-                        for (const [id, avatar] of this.avatars.entries()) {
-                            if (id !== projectile.ownerId) {
-                                const dx = avatar.x - projectile.x;
-                                const dy = avatar.y - projectile.y;
-                                const distance = Math.sqrt(dx * dx + dy * dy);
-                                const hitRadius = 20;
-            
-                                if (distance < hitRadius) {
-                                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                                        const hitMessage = {
-                                            type: 'damage',
-                                            sessionId: this.sessionId,
-                                            targetId: id,
-                                            amount: projectile.damage,
-                                            x: projectile.x,
-                                            y: projectile.y
-                                        };
-                                        
-                                        this.ws.send(JSON.stringify(hitMessage));
-                                        
-                                        avatar.createHitEffect(projectile.x, projectile.y);
-                                    }
-                                    
-                                    projectile.remove();
-                                    shouldKeep = false;
-                                    break;
-                                }
+                    if (collision) {
+                        const hitAvatar = this.avatars.get(collision.avatarId);
+                        if (hitAvatar) {
+                            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                                this.ws.send(JSON.stringify({
+                                    type: 'damage',
+                                    sessionId: this.sessionId,
+                                    targetId: collision.avatarId,
+                                    amount: projectile.damage,
+                                    x: collision.x,
+                                    y: collision.y
+                                }));
                             }
+                            
+                            hitAvatar.createHitEffect(collision.x, collision.y);
                         }
+                        projectilesToRemove.push(i);
+                        continue;
                     }
-            
-                    if (!shouldKeep) {
-                        projectile.remove();
+                    
+                    const alive = projectile.update(delta, this.avatars);
+                    if (!alive) {
+                        projectilesToRemove.push(i);
                     }
-                    return shouldKeep;
-                });
+                }
+                
+                for (let i = projectilesToRemove.length - 1; i >= 0; i--) {
+                    const index = projectilesToRemove[i];
+                    const projectile = this.projectiles[index];
+                    projectile.destroy();
+                    this.projectiles.splice(index, 1);
+                }
             },
 
             updateHealthBar(health) {
