@@ -88,10 +88,12 @@ class GameState {
   constructor() {
     this.clients = new Map();
     this.lastUpdate = Date.now();
+    this.MAP_WIDTH = 2000;
+    this.MAP_HEIGHT = 1500;
   }
 
   addClient(clientId, ws) {
-    const bounds = { width: 800, height: 600 };
+    const bounds = { width: this.MAP_WIDTH, height: this.MAP_HEIGHT };
     const client = {
       ws,
       id: clientId,
@@ -140,17 +142,34 @@ class GameState {
     const client = this.clients.get(clientId);
     if (!client) return false;
 
+    let stateChanged = false;
+
     if (state.health !== undefined) {
-      client.health = InputValidator.validateHealth(state.health);
+      const newHealth = InputValidator.validateHealth(state.health);
+      if (client.health !== newHealth) {
+        client.health = newHealth;
+        stateChanged = true;
+      }
     }
+
     if (state.shield !== undefined) {
-      client.shield = InputValidator.validateShield(state.shield);
+      const newShield = InputValidator.validateShield(state.shield);
+      if (client.shield !== newShield) {
+        client.shield = newShield;
+        stateChanged = true;
+      }
     }
+
     if (state.isShielding !== undefined) {
-      client.isShielding = Boolean(state.isShielding);
+      const newShielding = Boolean(state.isShielding);
+      if (client.isShielding !== newShielding) {
+        client.isShielding = newShielding;
+        stateChanged = true;
+      }
     }
+
     client.lastSeen = Date.now();
-    return true;
+    return stateChanged;
   }
 
   getClient(clientId) {

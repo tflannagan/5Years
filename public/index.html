@@ -131,6 +131,39 @@
             z-index: 4;
             pointer-events: none;
         }
+        
+        .avatar.self {
+            z-index: 5;
+        }
+        
+        .avatar.self::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 44px;
+            height: 44px;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
+            border-radius: 50%;
+            z-index: -1;
+            animation: glowPulse 2s infinite ease-in-out;
+        }
+        
+        @keyframes glowPulse {
+            0% { 
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.2;
+            }
+            50% { 
+                transform: translate(-50%, -50%) scale(1.2);
+                opacity: 0.3;
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.2;
+            }
+        }
 
         .avatar-body {
             width: 100%;
@@ -623,7 +656,7 @@
         }
 
         class Avatar {
-            constructor(id, x, y) {
+            constructor(id, x, y, isSelf = false) {
                 this.id = InputValidator.sanitizeId(id);
                 const validPos = InputValidator.validatePosition(x, y);
                 this.x = validPos.x;
@@ -636,12 +669,16 @@
                 this.isShielding = false;
                 this.isMoving = false;
                 this.lastUpdate = Date.now();
+                this.isSelf = isSelf;
                 this.createAvatarElement();
             }
-
+        
             createAvatarElement() {
                 this.element = document.createElement('div');
                 this.element.className = 'avatar';
+                if (this.isSelf) {
+                    this.element.classList.add('self');
+                }
                 this.color = this.generateRandomColor();
                 
                 this.element.innerHTML = `
@@ -663,16 +700,16 @@
                         <div class="avatar-shield-fill" style="width: 100%"></div>
                     </div>
                 `;
-
+        
                 document.querySelector('.game-container').appendChild(this.element);
                 this.updatePosition(this.x, this.y);
             }
-
+        
             generateRandomColor() {
                 const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
                 return colors[Math.floor(Math.random() * colors.length)];
             }
-
+        
             generateRandomAccessory() {
                 const accessories = [
                     '<path d="M15 28 H25" stroke="white" stroke-width="2"/>',
@@ -682,6 +719,39 @@
                 return accessories[Math.floor(Math.random() * accessories.length)];
             }
 
+            takeDamage(amount, sourceX, sourceY) {
+                if (!Number.isFinite(amount) || amount < 0) return;
+                
+                const oldHealth = this.health;
+                const oldShield = this.shield;
+                
+                if (this.isShielding && this.shield > 0) {
+                    const shieldDamage = amount * 0.5;
+                    this.shield = Math.max(0, this.shield - shieldDamage);
+                } else {
+                    this.health = Math.max(0, this.health - amount);
+                }
+
+                if (oldHealth !== this.health) {
+                    this.updateHealthBar();
+                }
+                if (oldShield !== this.shield) {
+                    this.updateShieldBar();
+                }
+        
+                this.element.classList.add('damaged');
+                setTimeout(() => this.element.classList.remove('damaged'), 200);
+                
+                this.createHitEffect(sourceX, sourceY);
+        
+                if (this.health <= 0) {
+                    const deathEvent = new CustomEvent('playerDeath', {
+                        detail: { avatarId: this.id }
+                    });
+                    document.dispatchEvent(deathEvent);
+                }
+            }
+        
             updatePosition(x, y) {
                 const validX = Math.max(0, Math.min(MAP_WIDTH, x));
                 const validY = Math.max(0, Math.min(MAP_HEIGHT, y));
@@ -702,64 +772,42 @@
                 }
             }
 
-            takeDamage(amount, sourceX, sourceY) {
-                if (!Number.isFinite(amount) || amount < 0) return;
-            
-                if (this.isShielding && this.shield > 0) {
-                    const shieldDamage = amount * 0.5;
-                    this.shield = Math.max(0, this.shield - shieldDamage);
-                    this.updateShieldBar();
-                } else {
-                    this.health = Math.max(0, this.health - amount);
-                    this.updateHealthBar();
-                }
-            
-                this.element.classList.add('damaged');
-                setTimeout(() => this.element.classList.remove('damaged'), 200);
-                this.createHitEffect(sourceX, sourceY);
-
-                if (this.health <= 0) {
-                    const deathEvent = new CustomEvent('playerDeath', {
-                        detail: { avatarId: this.id }
-                    });
-                    document.dispatchEvent(deathEvent);
-                }
-            }
             createHitEffect(sourceX, sourceY) {
                 const hitEffect = document.createElement('div');
                 hitEffect.className = 'hit-effect';
+
                 const screenX = this.x - cameraX;
                 const screenY = this.y - cameraY;
+                
                 hitEffect.style.left = `${screenX}px`;
                 hitEffect.style.top = `${screenY}px`;
                 document.querySelector('.game-container').appendChild(hitEffect);
+                
                 setTimeout(() => hitEffect.remove(), 400);
             }
-
+        
             updateHealthBar() {
                 const healthFill = this.element.querySelector('.avatar-health-fill');
                 if (healthFill) {
                     healthFill.style.width = `${this.health}%`;
                 }
+        
+                if (window.game && window.game.sessionId === this.id) {
+                    window.game.updateHealthBar(this.health);
+                }
             }
-
+        
             updateShieldBar() {
                 const shieldFill = this.element.querySelector('.avatar-shield-fill');
                 if (shieldFill) {
                     shieldFill.style.width = `${this.shield}%`;
                 }
-            }
-
-            setShielding(active) {
-                this.isShielding = active;
-                this.element.classList.toggle('shielded', active);
-            }
-
-            remove() {
-                this.element.remove();
+        
+                if (window.game && window.game.sessionId === this.id) {
+                    window.game.updateShieldBar(this.shield);
+                }
             }
         }
-
         class Projectile {
             constructor(x, y, angle, ownerId) {
                 const validPos = InputValidator.validatePosition(x, y);
@@ -1149,26 +1197,42 @@
                 if (!data.sessionId) return;
                 
                 this.sessionId = data.sessionId;
-                const x = window.innerWidth / 2;
-                const y = window.innerHeight / 2;
                 
-                this.avatars.set(data.sessionId, new Avatar(data.sessionId, x, y));
-                this.updatePlayerCount();
+                const validPos = InputValidator.validatePosition(
+                    data.x || MAP_WIDTH / 2,
+                    data.y || MAP_HEIGHT / 2
+                );
+                
+                const avatar = new Avatar(data.sessionId, validPos.x, validPos.y, true);
+                this.avatars.set(data.sessionId, avatar);
+                
+                this.updateHealthBar(100);
+                this.updateShieldBar(100);
+                
                 this.startTime = Date.now();
                 gameState.state.isPlaying = true;
+                this.updatePlayerCount();
+                
+                this.updateCamera();
             },
-
+            
             handlePositionMessage(data) {
                 if (!this.validateMessageData(data)) return;
                 
                 if (data.sessionId !== this.sessionId) {
-                    if (!this.avatars.has(data.sessionId)) {
-                        this.avatars.set(data.sessionId, new Avatar(data.sessionId, data.x, data.y));
-                        this.updatePlayerCount();
-                    }
                     const avatar = this.avatars.get(data.sessionId);
-                    avatar.updatePosition(data.x, data.y);
-                    avatar.angle = InputValidator.validateAngle(data.angle);
+                    
+                    if (!avatar) {
+                        const validPos = InputValidator.validatePosition(data.x, data.y);
+                        this.avatars.set(
+                            data.sessionId,
+                            new Avatar(data.sessionId, validPos.x, validPos.y, false)
+                        );
+                        this.updatePlayerCount();
+                    } else {
+                        avatar.updatePosition(data.x, data.y);
+                        avatar.angle = InputValidator.validateAngle(data.angle);
+                    }
                 }
             },
 
@@ -1224,12 +1288,26 @@
                 if (!this.validateMessageData(data)) return;
                 
                 const avatar = this.avatars.get(data.sessionId);
-                if (avatar && data.sessionId !== this.sessionId) {
-                    avatar.health = Math.max(0, Math.min(100, data.health));
-                    avatar.shield = Math.max(0, Math.min(100, data.shield));
+                if (!avatar) return;
+            
+                if (data.sessionId === this.sessionId) return;
+            
+                const oldHealth = avatar.health;
+                const oldShield = avatar.shield;
+                const oldShielding = avatar.isShielding;
+            
+                avatar.health = Math.max(0, Math.min(100, data.health));
+                avatar.shield = Math.max(0, Math.min(100, data.shield));
+                avatar.isShielding = Boolean(data.isShielding);
+            
+                if (oldHealth !== avatar.health) {
                     avatar.updateHealthBar();
+                }
+                if (oldShield !== avatar.shield) {
                     avatar.updateShieldBar();
-                    avatar.setShielding(Boolean(data.isShielding));
+                }
+                if (oldShielding !== avatar.isShielding) {
+                    avatar.setShielding(avatar.isShielding);
                 }
             },
 
@@ -1331,6 +1409,8 @@
             },
 
             handlePlayerDeath() {
+                if (!this.sessionId || !gameState.state.isPlaying) return;
+            
                 const survivalTime = Math.floor((Date.now() - this.startTime) / 1000);
                 
                 document.getElementById('survivalTime').textContent = survivalTime;
@@ -1353,9 +1433,8 @@
                 if (avatar) {
                     avatar.remove();
                     this.avatars.delete(this.sessionId);
+                    gameState.state.isPlaying = false;
                 }
-            
-                gameState.state.isPlaying = false;
             },
 
             shoot() {  if (!this.sessionId || !gameState.canSendMessage('shoot')) return;
@@ -1578,37 +1657,26 @@
                 this.startTime = Date.now();
                 this.damageDealt = 0;
                 
-                const shieldText = document.querySelector('#shieldText');
-                if (shieldText) {
-                    shieldText.style.color = '#fff';
-                }
-                
-                const container = document.querySelector('.game-container');
-                const padding = 100;
-                const spawnArea = {
-                    x: padding + Math.random() * (container.offsetWidth - padding * 2),
-                    y: padding + Math.random() * (container.offsetHeight - padding * 2)
-                };
-                       
                 if (this.avatars.has(this.sessionId)) {
                     const oldAvatar = this.avatars.get(this.sessionId);
                     oldAvatar.remove();
                     this.avatars.delete(this.sessionId);
                 }
                 
-                const validPos = InputValidator.validatePosition(spawnArea.x, spawnArea.y);
-                const newAvatar = new Avatar(this.sessionId, validPos.x, validPos.y);
+                const padding = 100;
+                const spawnX = padding + Math.random() * (MAP_WIDTH - padding * 2);
+                const spawnY = padding + Math.random() * (MAP_HEIGHT - padding * 2);
+                
+                const validPos = InputValidator.validatePosition(spawnX, spawnY);
+                const newAvatar = new Avatar(this.sessionId, validPos.x, validPos.y, true);
                 this.avatars.set(this.sessionId, newAvatar);
                 
-            
                 newAvatar.health = 100;
                 newAvatar.shield = 100;
                 
-           
                 this.updateHealthBar(100);
                 this.updateShieldBar(100);
                 
-             
                 this.ws.send(JSON.stringify({
                     type: 'respawn',
                     sessionId: this.sessionId,
