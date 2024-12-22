@@ -721,7 +721,7 @@
 
             takeDamage(amount, sourceX, sourceY) {
                 if (!Number.isFinite(amount) || amount < 0) return;
-                
+    
                 const oldHealth = this.health;
                 const oldShield = this.shield;
                 
@@ -738,18 +738,23 @@
                 if (oldShield !== this.shield) {
                     this.updateShieldBar();
                 }
-        
+
                 this.element.classList.add('damaged');
                 setTimeout(() => this.element.classList.remove('damaged'), 200);
                 
-                this.createHitEffect(sourceX, sourceY);
-        
-                if (this.health <= 0) {
+                if (sourceX !== undefined && sourceY !== undefined) {
+                    this.createHitEffect(sourceX, sourceY);
+                }
+
+                if (oldHealth > 0 && this.health <= 0) {
                     const deathEvent = new CustomEvent('playerDeath', {
                         detail: { avatarId: this.id }
                     });
                     document.dispatchEvent(deathEvent);
+                    return true; 
                 }
+                
+                return false;
             }
         
             updatePosition(x, y) {
@@ -830,13 +835,25 @@
             update(delta) {
                 if (!Number.isFinite(delta) || delta <= 0) return false;
                 
+                const oldX = this.x;
+                const oldY = this.y;
+                
                 this.x += Math.cos(this.angle) * this.speed * delta;
                 this.y += Math.sin(this.angle) * this.speed * delta;
-            
+                
                 const isOutOfBounds = this.x < 0 || this.x > MAP_WIDTH || 
                                      this.y < 0 || this.y > MAP_HEIGHT;
                 
                 if (!isOutOfBounds) {
+                    const dx = this.x - oldX;
+                    const dy = this.y - oldY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > 100) {
+                        this.x = oldX + (dx / distance) * 100;
+                        this.y = oldY + (dy / distance) * 100;
+                    }
+                    
                     this.updatePosition();
                     return true;
                 }
@@ -1264,18 +1281,18 @@
 
             handleDamageMessage(data) {
                 if (!this.validateMessageData(data)) return;
-                
+    
                 const target = this.avatars.get(data.targetId);
                 if (target) {
+                    const oldHealth = target.health;
                     target.takeDamage(data.amount, data.x, data.y);
                     
                     if (data.targetId === this.sessionId) {
-                        this.updateHealthBar(target.health);
-                        this.updateShieldBar(target.shield);
-                        
-                        if (target.health <= 0) {
+                        if (oldHealth > 0 && target.health <= 0) {
                             this.handlePlayerDeath();
                         }
+                        this.updateHealthBar(target.health);
+                        this.updateShieldBar(target.shield);
                     }
             
                     if (data.sourceId === this.sessionId) {
@@ -1410,15 +1427,17 @@
 
             handlePlayerDeath() {
                 if (!this.sessionId || !gameState.state.isPlaying) return;
-            
+
                 const survivalTime = Math.floor((Date.now() - this.startTime) / 1000);
-                
+
                 document.getElementById('survivalTime').textContent = survivalTime;
                 document.getElementById('damageDealt').textContent = Math.round(this.damageDealt);
-                
+
                 const gameOverModal = document.getElementById('gameOverModal');
-                gameOverModal.classList.add('active');
-                
+                if (gameOverModal) {
+                    gameOverModal.classList.add('active');
+                }
+
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({
                         type: 'death',
@@ -1428,13 +1447,18 @@
                         timestamp: Date.now()
                     }));
                 }
-                
+
                 const avatar = this.avatars.get(this.sessionId);
                 if (avatar) {
                     avatar.remove();
                     this.avatars.delete(this.sessionId);
-                    gameState.state.isPlaying = false;
                 }
+
+                gameState.state.isPlaying = false;
+                
+
+                this.projectiles.forEach(projectile => projectile.remove());
+                this.projectiles = [];
             },
 
             shoot() {  if (!this.sessionId || !gameState.canSendMessage('shoot')) return;
@@ -1528,15 +1552,20 @@
             
                                 if (distance < hitRadius) {
                                     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                                        this.ws.send(JSON.stringify({
+                                        const hitMessage = {
                                             type: 'damage',
                                             sessionId: this.sessionId,
                                             targetId: id,
                                             amount: projectile.damage,
                                             x: projectile.x,
                                             y: projectile.y
-                                        }));
+                                        };
+                                        
+                                        this.ws.send(JSON.stringify(hitMessage));
+                                        
+                                        avatar.createHitEffect(projectile.x, projectile.y);
                                     }
+                                    
                                     projectile.remove();
                                     shouldKeep = false;
                                     break;
@@ -1721,12 +1750,12 @@
                     `;
                     avatar.element.appendChild(durationBar);
                     
-                    this.ws.send({
+                    this.ws.send(JSON.stringify({
                         type: 'shield',
                         sessionId: this.sessionId,
                         active: true,
                         timestamp: Date.now()
-                    });
+                    }));
             
                     this.shieldTimer = setTimeout(() => {
                         avatar.setShielding(false);
@@ -1734,12 +1763,12 @@
                         const bar = avatar.element.querySelector('.shield-duration-bar');
                         if (bar) bar.remove();
             
-                        this.ws.send({
+                        this.ws.send(JSON.stringify({
                             type: 'shield',
                             sessionId: this.sessionId,
                             active: false,
                             timestamp: Date.now()
-                        });
+                        }));
             
                         const cooldownIndicator = document.createElement('div');
                         cooldownIndicator.className = 'shield-cooldown-indicator';
