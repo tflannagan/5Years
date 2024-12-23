@@ -693,6 +693,7 @@
                             ${this.generateRandomAccessory()}
                         </svg>
                     </div>
+                    <div class="avatar-shield"></div>
                     <div class="avatar-health-bar">
                         <div class="avatar-health-fill" style="width: 100%"></div>
                     </div>
@@ -718,10 +719,33 @@
                 ];
                 return accessories[Math.floor(Math.random() * accessories.length)];
             }
-
+        
+            setShielding(active) {
+                if (this.isShielding === active) return;
+                
+                this.isShielding = active;
+                if (active) {
+                    this.element.classList.add('shielded');
+                    
+                    // Add shield effect animation
+                    const shieldEffect = this.element.querySelector('.shield-effect');
+                    if (shieldEffect) {
+                        shieldEffect.style.animation = 'shield-pulse 2s infinite';
+                    }
+                } else {
+                    this.element.classList.remove('shielded');
+                    
+                    // Remove shield effect animation
+                    const shieldEffect = this.element.querySelector('.shield-effect');
+                    if (shieldEffect) {
+                        shieldEffect.style.animation = 'none';
+                    }
+                }
+            }
+        
             takeDamage(amount, sourceX, sourceY) {
-                if (!Number.isFinite(amount) || amount < 0) return;
-    
+                if (!Number.isFinite(amount) || amount < 0) return false;
+        
                 const oldHealth = this.health;
                 const oldShield = this.shield;
                 
@@ -731,56 +755,56 @@
                 } else {
                     this.health = Math.max(0, this.health - amount);
                 }
-
+        
                 if (oldHealth !== this.health) {
                     this.updateHealthBar();
                 }
                 if (oldShield !== this.shield) {
                     this.updateShieldBar();
                 }
-
+        
                 this.element.classList.add('damaged');
                 setTimeout(() => this.element.classList.remove('damaged'), 200);
                 
                 if (sourceX !== undefined && sourceY !== undefined) {
                     this.createHitEffect(sourceX, sourceY);
                 }
-
+        
                 if (oldHealth > 0 && this.health <= 0) {
                     const deathEvent = new CustomEvent('playerDeath', {
                         detail: { avatarId: this.id }
                     });
                     document.dispatchEvent(deathEvent);
-                    return true; 
+                    return true;
                 }
                 
                 return false;
             }
         
             updatePosition(x, y) {
-                const validX = Math.max(0, Math.min(MAP_WIDTH, x));
-                const validY = Math.max(0, Math.min(MAP_HEIGHT, y));
+                const screenX = x - cameraX;
+                const screenY = y - cameraY;
                 
-                this.x = validX;
-                this.y = validY;
+                this.x = x;
+                this.y = y;
                 
-                const screenX = validX - cameraX;
-                const screenY = validY - cameraY;
-                this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
-                
-                if (this.angle !== undefined) {
-                    const bodyRotation = this.angle * (180 / Math.PI);
-                    const avatarBody = this.element.querySelector('.avatar-body');
-                    if (avatarBody) {
-                        avatarBody.style.transform = `rotate(${bodyRotation}deg)`;
+                if (this.element) {
+                    this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
+                    
+                    if (this.angle !== undefined) {
+                        const bodyRotation = this.angle * (180 / Math.PI);
+                        const avatarBody = this.element.querySelector('.avatar-body');
+                        if (avatarBody) {
+                            avatarBody.style.transform = `rotate(${bodyRotation}deg)`;
+                        }
                     }
                 }
             }
-
+        
             createHitEffect(sourceX, sourceY) {
                 const hitEffect = document.createElement('div');
                 hitEffect.className = 'hit-effect';
-
+                
                 const screenX = this.x - cameraX;
                 const screenY = this.y - cameraY;
                 
@@ -812,7 +836,25 @@
                     window.game.updateShieldBar(this.shield);
                 }
             }
+        
+            remove() {
+                if (this.element && this.element.parentNode) {
+                    this.element.remove();
+                }
+            }
+        
+            setMoving(isMoving) {
+                if (this.isMoving === isMoving) return;
+                this.isMoving = isMoving;
+                
+                if (isMoving) {
+                    this.element.classList.add('moving');
+                } else {
+                    this.element.classList.remove('moving');
+                }
+            }
         }
+        
         class Projectile {
             constructor(x, y, angle, ownerId) {
                 this.x = Math.max(0, Math.min(MAP_WIDTH, x));
