@@ -661,8 +661,6 @@
                 const validPos = InputValidator.validatePosition(x, y);
                 this.x = validPos.x;
                 this.y = validPos.y;
-                this.targetX = this.x;
-                this.targetY = this.y;
                 this.angle = 0;
                 this.health = 100;
                 this.shield = 100;
@@ -703,7 +701,7 @@
                 `;
         
                 document.querySelector('.game-container').appendChild(this.element);
-                this.updatePosition(this.x, this.y);
+                this.updateVisualPosition();
             }
         
             generateRandomColor() {
@@ -720,22 +718,44 @@
                 return accessories[Math.floor(Math.random() * accessories.length)];
             }
         
+            updatePosition(x, y) {
+                const validX = Math.max(0, Math.min(MAP_WIDTH, x));
+                const validY = Math.max(0, Math.min(MAP_HEIGHT, y));
+                
+                this.x = validX;
+                this.y = validY;
+                
+                this.updateVisualPosition();
+            }
+        
+            updateVisualPosition() {
+                if (!this.element) return;
+        
+                const screenX = Math.round(this.x - game.cameraX);
+                const screenY = Math.round(this.y - game.cameraY);
+                
+                this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
+                
+                if (this.angle !== undefined) {
+                    const avatarBody = this.element.querySelector('.avatar-body');
+                    if (avatarBody) {
+                        avatarBody.style.transform = `rotate(${this.angle * (180 / Math.PI)}deg)`;
+                    }
+                }
+            }
+        
             setShielding(active) {
                 if (this.isShielding === active) return;
                 
                 this.isShielding = active;
                 if (active) {
                     this.element.classList.add('shielded');
-                    
-                    // Add shield effect animation
                     const shieldEffect = this.element.querySelector('.shield-effect');
                     if (shieldEffect) {
                         shieldEffect.style.animation = 'shield-pulse 2s infinite';
                     }
                 } else {
                     this.element.classList.remove('shielded');
-                    
-                    // Remove shield effect animation
                     const shieldEffect = this.element.querySelector('.shield-effect');
                     if (shieldEffect) {
                         shieldEffect.style.animation = 'none';
@@ -747,71 +767,44 @@
                 if (!Number.isFinite(amount) || amount < 0) return false;
         
                 const oldHealth = this.health;
-                const oldShield = this.shield;
                 
                 if (this.isShielding && this.shield > 0) {
                     const shieldDamage = amount * 0.5;
                     this.shield = Math.max(0, this.shield - shieldDamage);
+                    this.updateShieldBar();
                 } else {
                     this.health = Math.max(0, this.health - amount);
-                }
-        
-                if (oldHealth !== this.health) {
                     this.updateHealthBar();
-                }
-                if (oldShield !== this.shield) {
-                    this.updateShieldBar();
                 }
         
                 this.element.classList.add('damaged');
                 setTimeout(() => this.element.classList.remove('damaged'), 200);
-                
+        
                 if (sourceX !== undefined && sourceY !== undefined) {
                     this.createHitEffect(sourceX, sourceY);
                 }
         
                 if (oldHealth > 0 && this.health <= 0) {
-                    const deathEvent = new CustomEvent('playerDeath', {
+                    window.dispatchEvent(new CustomEvent('playerDeath', {
                         detail: { avatarId: this.id }
-                    });
-                    document.dispatchEvent(deathEvent);
+                    }));
                     return true;
                 }
                 
                 return false;
             }
         
-            updatePosition(x, y) {
-                const screenX = x - cameraX;
-                const screenY = y - cameraY;
-                
-                this.x = x;
-                this.y = y;
-                
-                if (this.element) {
-                    this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
-                    
-                    if (this.angle !== undefined) {
-                        const bodyRotation = this.angle * (180 / Math.PI);
-                        const avatarBody = this.element.querySelector('.avatar-body');
-                        if (avatarBody) {
-                            avatarBody.style.transform = `rotate(${bodyRotation}deg)`;
-                        }
-                    }
-                }
-            }
-        
             createHitEffect(sourceX, sourceY) {
                 const hitEffect = document.createElement('div');
                 hitEffect.className = 'hit-effect';
                 
-                const screenX = this.x - cameraX;
-                const screenY = this.y - cameraY;
+                const screenX = this.x - game.cameraX;
+                const screenY = this.y - game.cameraY;
                 
                 hitEffect.style.left = `${screenX}px`;
                 hitEffect.style.top = `${screenY}px`;
-                document.querySelector('.game-container').appendChild(hitEffect);
                 
+                document.querySelector('.game-container').appendChild(hitEffect);
                 setTimeout(() => hitEffect.remove(), 400);
             }
         
@@ -820,10 +813,6 @@
                 if (healthFill) {
                     healthFill.style.width = `${this.health}%`;
                 }
-        
-                if (window.game && window.game.sessionId === this.id) {
-                    window.game.updateHealthBar(this.health);
-                }
             }
         
             updateShieldBar() {
@@ -831,30 +820,16 @@
                 if (shieldFill) {
                     shieldFill.style.width = `${this.shield}%`;
                 }
-        
-                if (window.game && window.game.sessionId === this.id) {
-                    window.game.updateShieldBar(this.shield);
-                }
             }
         
             remove() {
                 if (this.element && this.element.parentNode) {
                     this.element.remove();
-                }
-            }
-        
-            setMoving(isMoving) {
-                if (this.isMoving === isMoving) return;
-                this.isMoving = isMoving;
-                
-                if (isMoving) {
-                    this.element.classList.add('moving');
-                } else {
-                    this.element.classList.remove('moving');
+                    this.element = null;
                 }
             }
         }
-        
+
         class Projectile {
             constructor(x, y, angle, ownerId) {
                 this.x = Math.max(0, Math.min(MAP_WIDTH, x));
@@ -995,25 +970,21 @@
                 this.startGameLoop();
                 this.initMiniMap();
                 
-                document.addEventListener('playerDeath', (event) => {
+                window.addEventListener('playerDeath', (event) => {
                     if (event.detail.avatarId === this.sessionId) {
                         this.handlePlayerDeath();
                     }
                 });
-                
 
                 const respawnButton = document.querySelector('.modal-button');
                 if (respawnButton) {
                     respawnButton.removeEventListener('click', this.respawn);
                     respawnButton.addEventListener('click', () => this.respawn());
                 }
-            
-                setInterval(() => this.updateMiniMap(), 100);
 
-                window.addEventListener('beforeunload', () => {
-                    this.cleanup();
-                });
+                setInterval(() => this.updateMiniMap(), 100);
             },
+            
             initMiniMap() {
                 const miniMap = document.createElement('div');
                 miniMap.className = 'mini-map';
@@ -1052,19 +1023,15 @@
             },
 
             updateCamera() {
-                if (!this.sessionId) return;
                 const avatar = this.avatars.get(this.sessionId);
                 if (!avatar) return;
-            
+
                 const container = document.querySelector('.game-container');
                 const viewportWidth = container.offsetWidth;
                 const viewportHeight = container.offsetHeight;
-            
-                cameraX = avatar.x - viewportWidth / 2;
-                cameraY = avatar.y - viewportHeight / 2;
 
-                cameraX = Math.max(0, Math.min(MAP_WIDTH - viewportWidth, cameraX));
-                cameraY = Math.max(0, Math.min(MAP_HEIGHT - viewportHeight, cameraY));
+                this.cameraX = Math.max(0, Math.min(MAP_WIDTH - viewportWidth, avatar.x - viewportWidth / 2));
+                this.cameraY = Math.max(0, Math.min(MAP_HEIGHT - viewportHeight, avatar.y - viewportHeight / 2));
 
                 this.updateWorldPosition();
             },
@@ -1074,20 +1041,19 @@
                 const background = document.querySelector('.background');
                 
                 if (grid && background) {
-                    grid.style.transform = `translate(${-cameraX}px, ${-cameraY}px)`;
-                    background.style.transform = `translate(${-cameraX}px, ${-cameraY}px)`;
+                    const transform = `translate(${-this.cameraX}px, ${-this.cameraY}px)`;
+                    grid.style.transform = transform;
+                    background.style.transform = transform;
                 }
-            
-                this.avatars.forEach(avatar => {
-                    const screenX = avatar.x - cameraX;
-                    const screenY = avatar.y - cameraY;
-                    avatar.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
-                });
-            
+
+                this.avatars.forEach(avatar => avatar.updateVisualPosition());
+                
                 this.projectiles.forEach(projectile => {
-                    const screenX = projectile.x - cameraX;
-                    const screenY = projectile.y - cameraY;
-                    projectile.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
+                    if (projectile.element) {
+                        const screenX = projectile.x - this.cameraX;
+                        const screenY = projectile.y - this.cameraY;
+                        projectile.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
+                    }
                 });
             },
 
@@ -1522,17 +1488,17 @@
 
             handlePlayerDeath() {
                 if (!this.sessionId || !gameState.state.isPlaying) return;
-
+        
                 const survivalTime = Math.floor((Date.now() - this.startTime) / 1000);
-
+                
                 document.getElementById('survivalTime').textContent = survivalTime;
                 document.getElementById('damageDealt').textContent = Math.round(this.damageDealt);
-
+        
                 const gameOverModal = document.getElementById('gameOverModal');
                 if (gameOverModal) {
                     gameOverModal.classList.add('active');
                 }
-
+        
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({
                         type: 'death',
@@ -1542,16 +1508,14 @@
                         timestamp: Date.now()
                     }));
                 }
-
+        
                 const avatar = this.avatars.get(this.sessionId);
                 if (avatar) {
                     avatar.remove();
                     this.avatars.delete(this.sessionId);
                 }
-
+        
                 gameState.state.isPlaying = false;
-                
-
                 this.projectiles.forEach(projectile => projectile.remove());
                 this.projectiles = [];
             },
