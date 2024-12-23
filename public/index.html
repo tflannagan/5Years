@@ -500,7 +500,7 @@
                     }
                 };
             }
-
+        
             canSendMessage(type) {
                 const now = Date.now();
                 const limit = this.state.rateLimits[type];
@@ -513,7 +513,7 @@
                 }
                 return false;
             }
-
+        
             updateConnectionState(isConnected) {
                 this.state.isConnected = isConnected;
                 const connectionStatus = document.querySelector('.connection-status');
@@ -530,20 +530,20 @@
                     }
                 }
             }
-
+        
             showError(message) {
                 const errorOverlay = document.querySelector('.error-overlay');
                 const errorText = document.getElementById('errorText');
                 errorText.textContent = message;
                 errorOverlay.classList.add('visible');
             }
-
+        
             hideError() {
                 const errorOverlay = document.querySelector('.error-overlay');
                 errorOverlay.classList.remove('visible');
             }
         }
-
+        
         class SecureWebSocket {
             constructor(url, options = {}) {
                 this.url = url;
@@ -556,7 +556,7 @@
                 this.listeners = new Map();
                 this.connect();
             }
-
+        
             connect() {
                 try {
                     this.ws = new WebSocket(this.url);
@@ -565,31 +565,31 @@
                     this.handleError(error);
                 }
             }
-
+        
             setupEventListeners() {
                 this.ws.onopen = () => {
                     this.reconnectAttempts = 0;
                     this.emit('open');
                 };
-
+        
                 this.ws.onclose = () => {
                     this.handleClose();
                 };
-
+        
                 this.ws.onerror = (error) => {
                     this.handleError(error);
                 };
-
+        
                 this.ws.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        this.emit('message', data);
+                        this.handleMessage(data);
                     } catch (error) {
                         console.error('Message parsing error:', error);
                     }
                 };
             }
-
+        
             handleClose() {
                 if (this.reconnectAttempts < this.options.maxReconnectAttempts) {
                     setTimeout(() => {
@@ -601,11 +601,11 @@
                 }
                 this.emit('close');
             }
-
+        
             handleError(error) {
                 this.emit('error', error);
             }
-
+        
             send(data) {
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     try {
@@ -618,26 +618,26 @@
                 }
                 return false;
             }
-
+        
             on(event, callback) {
                 if (!this.listeners.has(event)) {
                     this.listeners.set(event, []);
                 }
                 this.listeners.get(event).push(callback);
             }
-
+        
             emit(event, data) {
                 const callbacks = this.listeners.get(event) || [];
                 callbacks.forEach(callback => callback(data));
             }
-
+        
             close() {
                 if (this.ws) {
                     this.ws.close();
                 }
             }
         }
-
+        
         class InputValidator {
             static validatePosition(x, y) {
                 return {
@@ -645,16 +645,16 @@
                     y: Math.max(0, Math.min(MAP_HEIGHT, Number(y) || 0))
                 };
             }
-
+        
             static validateAngle(angle) {
                 return Number(angle) || 0;
             }
-
+        
             static sanitizeId(id) {
                 return String(id).replace(/[^a-zA-Z0-9-_]/g, '');
             }
         }
-
+        
         class Avatar {
             constructor(id, x, y, isSelf = false) {
                 this.id = InputValidator.sanitizeId(id);
@@ -769,13 +769,17 @@
                 const oldHealth = this.health;
                 
                 if (this.isShielding && this.shield > 0) {
-                    const shieldDamage = amount * 0.5;
+                    const shieldDamage = Math.min(this.shield, amount * 0.5);
                     this.shield = Math.max(0, this.shield - shieldDamage);
-                    this.updateShieldBar();
-                } else {
-                    this.health = Math.max(0, this.health - amount);
-                    this.updateHealthBar();
+                    amount -= shieldDamage * 2;
                 }
+                
+                if (amount > 0) {
+                    this.health = Math.max(0, this.health - amount);
+                }
+                
+                this.updateHealthBar();
+                this.updateShieldBar();
         
                 this.element.classList.add('damaged');
                 setTimeout(() => this.element.classList.remove('damaged'), 200);
@@ -829,7 +833,7 @@
                 }
             }
         }
-
+        
         class Projectile {
             constructor(x, y, angle, ownerId) {
                 this.x = Math.max(0, Math.min(MAP_WIDTH, x));
@@ -842,6 +846,8 @@
                 this.damage = 10;
                 this.alive = true;
                 this.element = null;
+                this.distanceTraveled = 0;
+                this.maxDistance = 1000;
                 this.createProjectileElement();
             }
         
@@ -854,14 +860,14 @@
         
             getScreenPosition() {
                 return {
-                    x: Math.round(this.x - cameraX),
-                    y: Math.round(this.y - cameraY)
+                    x: Math.round(this.x - game.cameraX),
+                    y: Math.round(this.y - game.cameraY)
                 };
             }
         
             updatePosition() {
                 if (!this.element || !this.alive) return;
-
+        
                 const screenX = Math.round(this.x - game.cameraX);
                 const screenY = Math.round(this.y - game.cameraY);
                 
@@ -882,20 +888,21 @@
                 
                 const distanceThisFrame = Math.sqrt(moveX * moveX + moveY * moveY);
                 this.distanceTraveled += distanceThisFrame;
-        
+            
                 if (this.x < 0 || this.x > MAP_WIDTH || 
                     this.y < 0 || this.y > MAP_HEIGHT || 
                     this.distanceTraveled > this.maxDistance) {
                     this.alive = false;
                     return false;
                 }
-        
+            
                 const collision = this.checkCollisions(avatars);
                 if (collision) {
+                    game.handleProjectileHit(this, collision.avatarId);
                     this.alive = false;
                     return false;
                 }
-        
+            
                 this.updatePosition();
                 return true;
             }
@@ -938,9 +945,8 @@
                 }
                 this.alive = false;
             }
-        
         }
-
+        
         const gameState = new GameStateManager();
         
         const MAP_WIDTH = 2000;
@@ -998,9 +1004,7 @@
                 const miniMap = document.querySelector('.mini-map');
                 if (!miniMap) return;
             
-               
                 miniMap.innerHTML = '';
-            
             
                 this.avatars.forEach((avatar, id) => {
                     const dot = document.createElement('div');
@@ -1019,8 +1023,8 @@
                 viewport.style.border = '1px solid rgba(255, 255, 255, 0.3)';
                 viewport.style.width = `${(window.innerWidth / MAP_WIDTH) * 200}px`;
                 viewport.style.height = `${(window.innerHeight / MAP_HEIGHT) * 150}px`;
-                viewport.style.left = `${(cameraX / MAP_WIDTH) * 200}px`;
-                viewport.style.top = `${(cameraY / MAP_HEIGHT) * 150}px`;
+                viewport.style.left = `${(this.cameraX / MAP_WIDTH) * 200}px`;
+                viewport.style.top = `${(this.cameraY / MAP_HEIGHT) * 150}px`;
                 miniMap.appendChild(viewport);
             },
 
@@ -1243,11 +1247,11 @@
                     case 'init':
                         this.handleInitMessage(data);
                         break;
+                    case 'playerJoined':
+                        this.handlePlayerJoinedMessage(data);
+                        break;
                     case 'position':
                         this.handlePositionMessage(data);
-                        break;
-                    case 'shield':
-                        this.handleShieldMessage(data);
                         break;
                     case 'shoot':
                         this.handleShootMessage(data);
@@ -1264,133 +1268,70 @@
                     case 'disconnect':
                         this.handleDisconnectMessage(data);
                         break;
-                    case 'error':
-                        this.handleErrorMessage(data);
+                        case 'players':
+                        document.getElementById('playerCount').textContent = data.count;
                         break;
                 }
             },
-
+            
             handleInitMessage(data) {
-                if (!data.sessionId) return;
-                
                 this.sessionId = data.sessionId;
-                
-                const validPos = InputValidator.validatePosition(
-                    data.x || MAP_WIDTH / 2,
-                    data.y || MAP_HEIGHT / 2
-                );
-                
-                const avatar = new Avatar(data.sessionId, validPos.x, validPos.y, true);
+                const avatar = new Avatar(data.sessionId, data.x, data.y, true);
                 this.avatars.set(data.sessionId, avatar);
-                
                 this.updateHealthBar(100);
                 this.updateShieldBar(100);
-                
-                this.startTime = Date.now();
                 gameState.state.isPlaying = true;
-                this.updatePlayerCount();
-                
                 this.updateCamera();
+                this.updatePlayerCount();
+            },
+            
+            handlePlayerJoinedMessage(data) {
+                if (data.sessionId !== this.sessionId && !this.avatars.has(data.sessionId)) {
+                    const newAvatar = new Avatar(data.sessionId, data.x, data.y);
+                    this.avatars.set(data.sessionId, newAvatar);
+                    newAvatar.health = data.health;
+                    newAvatar.shield = data.shield;
+                    newAvatar.angle = data.angle;
+                    newAvatar.updateHealthBar();
+                    newAvatar.updateShieldBar();
+                    this.updatePlayerCount();
+                }
             },
             
             handlePositionMessage(data) {
-                if (!this.validateMessageData(data)) return;
-                
                 if (data.sessionId !== this.sessionId) {
                     const avatar = this.avatars.get(data.sessionId);
-                    
-                    if (!avatar) {
-                        const validPos = InputValidator.validatePosition(data.x, data.y);
-                        this.avatars.set(
-                            data.sessionId,
-                            new Avatar(data.sessionId, validPos.x, validPos.y, false)
-                        );
-                        this.updatePlayerCount();
-                    } else {
+                    if (avatar) {
                         avatar.updatePosition(data.x, data.y);
-                        avatar.angle = InputValidator.validateAngle(data.angle);
+                        avatar.angle = data.angle;
                     }
                 }
             },
-
-            handleShieldMessage(data) {
-                if (!this.validateMessageData(data)) return;
-                
-                const avatar = this.avatars.get(data.sessionId);
-                if (avatar) {
-                    avatar.setShielding(Boolean(data.active));
-                }
-            },
-
+            
             handleShootMessage(data) {
-                if (!this.validateMessageData(data)) return;
-                
                 if (data.sessionId !== this.sessionId) {
-                    const shooter = this.avatars.get(data.sessionId);
-                    if (shooter) {
-                        const projectile = new Projectile(
-                            data.x,
-                            data.y,
-                            data.angle,
-                            data.sessionId
-                        );
-                        this.projectiles.push(projectile);
-                    }
+                    const projectile = new Projectile(data.x, data.y, data.angle, data.sessionId);
+                    this.projectiles.push(projectile);
                 }
             },
-
+            
             handleDamageMessage(data) {
-                if (!this.validateMessageData(data)) return;
-                
                 const target = this.avatars.get(data.targetId);
-                if (!target) return;
-                
-                const damage = Math.min(100, Math.max(0, Number(data.amount) || 0));
-                
-                if (data.targetId === this.sessionId) {
-                    const didDie = target.takeDamage(damage, data.x, data.y);
-                    this.updateHealthBar(target.health);
-                    this.updateShieldBar(target.shield);
-                    
-                    if (didDie) {
-                        this.handlePlayerDeath();
+                if (target) {
+                    const didDie = target.takeDamage(data.amount, data.x, data.y);
+                    if (data.targetId === this.sessionId) {
+                        this.updateHealthBar(target.health);
+                        this.updateShieldBar(target.shield);
+                        if (didDie) {
+                            this.handlePlayerDeath();
+                        }
                     }
-                } else {
-                    target.takeDamage(damage, data.x, data.y);
-                }
-                
-                if (data.sourceId === this.sessionId) {
-                    this.damageDealt += damage;
+                    if (data.sessionId === this.sessionId) {
+                        this.damageDealt += data.amount;
+                    }
                 }
             },
-
-            handlePlayerStateMessage(data) {
-                if (!this.validateMessageData(data)) return;
-                
-                const avatar = this.avatars.get(data.sessionId);
-                if (!avatar) return;
             
-                if (data.sessionId === this.sessionId) return;
-            
-                const oldHealth = avatar.health;
-                const oldShield = avatar.shield;
-                const oldShielding = avatar.isShielding;
-            
-                avatar.health = Math.max(0, Math.min(100, data.health));
-                avatar.shield = Math.max(0, Math.min(100, data.shield));
-                avatar.isShielding = Boolean(data.isShielding);
-            
-                if (oldHealth !== avatar.health) {
-                    avatar.updateHealthBar();
-                }
-                if (oldShield !== avatar.shield) {
-                    avatar.updateShieldBar();
-                }
-                if (oldShielding !== avatar.isShielding) {
-                    avatar.setShielding(avatar.isShielding);
-                }
-            },
-
             handleDeathMessage(data) {
                 if (!this.validateMessageData(data)) return;
                 
@@ -1417,10 +1358,6 @@
                         this.updatePlayerCount();
                     }
                 }
-            },
-
-            handleErrorMessage(data) {
-                gameState.showError(data.message || 'An error occurred');
             },
 
             validateMessageData(data) {
@@ -1533,8 +1470,6 @@
                 const spawnOffset = 30;
                 const spawnX = avatar.x + Math.cos(avatar.angle) * spawnOffset;
                 const spawnY = avatar.y + Math.sin(avatar.angle) * spawnOffset;
-                
-                // Create the projectile in world coordinates
                 const projectile = new Projectile(spawnX, spawnY, avatar.angle, this.sessionId);
                 this.projectiles.push(projectile);
                 
@@ -1607,49 +1542,10 @@
                         continue;
                     }
             
-                    projectile.lastX = projectile.x;
-                    projectile.lastY = projectile.y;
-                    
-                    projectile.x += Math.cos(projectile.angle) * projectile.speed * delta;
-                    projectile.y += Math.sin(projectile.angle) * projectile.speed * delta;
+                    projectile.update(delta, this.avatars);
             
-                    let hitAvatar = null;
-                    for (const [id, avatar] of this.avatars.entries()) {
-                        if (id !== projectile.ownerId) {
-                            const dx = avatar.x - projectile.x;
-                            const dy = avatar.y - projectile.y;
-                            const distance = Math.sqrt(dx * dx + dy * dy);
-                            
-                            if (distance < 20) {
-                                hitAvatar = { avatar, id, distance };
-                                break;
-                            }
-                        }
-                    }
-            
-                    if (hitAvatar) {
-                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                            this.ws.send(JSON.stringify({
-                                type: 'damage',
-                                sessionId: this.sessionId,
-                                targetId: hitAvatar.id,
-                                amount: projectile.damage,
-                                x: projectile.x,
-                                y: projectile.y
-                            }));
-                        }
-                        
-                        hitAvatar.avatar.createHitEffect(projectile.x, projectile.y);
-                        projectile.alive = false;
+                    if (!projectile.alive) {
                         projectilesToRemove.push(i);
-                    } else if (
-                        projectile.x < 0 || projectile.x > MAP_WIDTH ||
-                        projectile.y < 0 || projectile.y > MAP_HEIGHT
-                    ) {
-                        projectile.alive = false;
-                        projectilesToRemove.push(i);
-                    } else {
-                        projectile.updatePosition();
                     }
                 }
                 
@@ -1662,6 +1558,20 @@
                         }
                         this.projectiles.splice(index, 1);
                     }
+                }
+            },
+
+            handleProjectileHit(projectile, targetId) {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'damage',
+                        sessionId: projectile.ownerId,
+                        targetId: targetId,
+                        amount: projectile.damage,
+                        x: projectile.x,
+                        y: projectile.y,
+                        timestamp: Date.now()
+                    }));
                 }
             },
 
@@ -1801,8 +1711,8 @@
                 }));
             
                 gameState.state.isPlaying = true;
+                this.updateCamera();
             },
-
             reconnect() {
                 gameState.hideError();
                 this.cleanup();
