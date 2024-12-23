@@ -861,8 +861,10 @@
         
             updatePosition() {
                 if (!this.element || !this.alive) return;
-                const screenX = this.x - cameraX;
-                const screenY = this.y - cameraY;
+
+                const screenX = Math.round(this.x - game.cameraX);
+                const screenY = Math.round(this.y - game.cameraY);
+                
                 this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
             }
         
@@ -984,7 +986,7 @@
 
                 setInterval(() => this.updateMiniMap(), 100);
             },
-            
+
             initMiniMap() {
                 const miniMap = document.createElement('div');
                 miniMap.className = 'mini-map';
@@ -1045,14 +1047,14 @@
                     grid.style.transform = transform;
                     background.style.transform = transform;
                 }
-
-                this.avatars.forEach(avatar => avatar.updateVisualPosition());
+            
+                this.avatars.forEach(avatar => {
+                    avatar.updateVisualPosition();
+                });
                 
                 this.projectiles.forEach(projectile => {
-                    if (projectile.element) {
-                        const screenX = projectile.x - this.cameraX;
-                        const screenY = projectile.y - this.cameraY;
-                        projectile.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
+                    if (projectile && projectile.element) {
+                        projectile.updatePosition();
                     }
                 });
             },
@@ -1447,12 +1449,14 @@
 
             handleMouseMove(e) {
                 if (!this.sessionId) return;
-    
+
                 const avatar = this.avatars.get(this.sessionId);
                 if (avatar) {
                     const rect = document.querySelector('.game-container').getBoundingClientRect();
-                    const mouseWorldX = e.clientX + cameraX;
-                    const mouseWorldY = e.clientY + cameraY;
+                    
+                    const mouseWorldX = e.clientX - rect.left + this.cameraX;
+                    const mouseWorldY = e.clientY - rect.top + this.cameraY;
+                    
                     const dx = mouseWorldX - avatar.x;
                     const dy = mouseWorldY - avatar.y;
                     avatar.angle = Math.atan2(dy, dx);
@@ -1530,6 +1534,7 @@
                 const spawnX = avatar.x + Math.cos(avatar.angle) * spawnOffset;
                 const spawnY = avatar.y + Math.sin(avatar.angle) * spawnOffset;
                 
+                // Create the projectile in world coordinates
                 const projectile = new Projectile(spawnX, spawnY, avatar.angle, this.sessionId);
                 this.projectiles.push(projectile);
                 
