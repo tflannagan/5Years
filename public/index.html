@@ -817,16 +817,14 @@
             constructor(x, y, angle, ownerId) {
                 this.x = Math.max(0, Math.min(MAP_WIDTH, x));
                 this.y = Math.max(0, Math.min(MAP_HEIGHT, y));
+                this.lastX = this.x;
+                this.lastY = this.y;
                 this.angle = angle;
                 this.ownerId = ownerId;
                 this.speed = 1000;
                 this.damage = 10;
-                this.lastX = this.x;
-                this.lastY = this.y;
                 this.alive = true;
-                this.distanceTraveled = 0;
-                this.maxDistance = 2000;
-                this.radius = 4;
+                this.element = null;
                 this.createProjectileElement();
             }
         
@@ -845,9 +843,10 @@
             }
         
             updatePosition() {
-                if (!this.element) return;
-                const screenPos = this.getScreenPosition();
-                this.element.style.transform = `translate(${screenPos.x}px, ${screenPos.y}px)`;
+                if (!this.element || !this.alive) return;
+                const screenX = this.x - cameraX;
+                const screenY = this.y - cameraY;
+                this.element.style.transform = `translate(${screenX}px, ${screenY}px)`;
             }
         
             update(delta, avatars) {
@@ -915,10 +914,12 @@
         
             remove() {
                 if (this.element && this.element.parentNode) {
-                    this.element.parentNode.removeChild(this.element);
+                    this.element.remove();
                     this.element = null;
                 }
+                this.alive = false;
             }
+        
         }
 
         const gameState = new GameStateManager();
@@ -1587,43 +1588,69 @@
             
             updateProjectiles(delta) {
                 const projectilesToRemove = [];
-                const hits = [];
                 
                 for (let i = this.projectiles.length - 1; i >= 0; i--) {
                     const projectile = this.projectiles[i];
-                    const collision = projectile.checkCollisions(this.avatars);
-                    
-                    if (collision) {
-                        const hitAvatar = this.avatars.get(collision.avatarId);
-                        if (hitAvatar) {
-                            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                                this.ws.send(JSON.stringify({
-                                    type: 'damage',
-                                    sessionId: this.sessionId,
-                                    targetId: collision.avatarId,
-                                    amount: projectile.damage,
-                                    x: collision.x,
-                                    y: collision.y
-                                }));
-                            }
-                            
-                            hitAvatar.createHitEffect(collision.x, collision.y);
-                        }
+                    if (!projectile || !projectile.alive) {
                         projectilesToRemove.push(i);
                         continue;
                     }
+            
+                    projectile.lastX = projectile.x;
+                    projectile.lastY = projectile.y;
                     
-                    const alive = projectile.update(delta, this.avatars);
-                    if (!alive) {
+                    projectile.x += Math.cos(projectile.angle) * projectile.speed * delta;
+                    projectile.y += Math.sin(projectile.angle) * projectile.speed * delta;
+            
+                    let hitAvatar = null;
+                    for (const [id, avatar] of this.avatars.entries()) {
+                        if (id !== projectile.ownerId) {
+                            const dx = avatar.x - projectile.x;
+                            const dy = avatar.y - projectile.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            if (distance < 20) {
+                                hitAvatar = { avatar, id, distance };
+                                break;
+                            }
+                        }
+                    }
+            
+                    if (hitAvatar) {
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            this.ws.send(JSON.stringify({
+                                type: 'damage',
+                                sessionId: this.sessionId,
+                                targetId: hitAvatar.id,
+                                amount: projectile.damage,
+                                x: projectile.x,
+                                y: projectile.y
+                            }));
+                        }
+                        
+                        hitAvatar.avatar.createHitEffect(projectile.x, projectile.y);
+                        projectile.alive = false;
                         projectilesToRemove.push(i);
+                    } else if (
+                        projectile.x < 0 || projectile.x > MAP_WIDTH ||
+                        projectile.y < 0 || projectile.y > MAP_HEIGHT
+                    ) {
+                        projectile.alive = false;
+                        projectilesToRemove.push(i);
+                    } else {
+                        projectile.updatePosition();
                     }
                 }
                 
                 for (let i = projectilesToRemove.length - 1; i >= 0; i--) {
                     const index = projectilesToRemove[i];
-                    const projectile = this.projectiles[index];
-                    projectile.destroy();
-                    this.projectiles.splice(index, 1);
+                    if (index >= 0 && index < this.projectiles.length) {
+                        const projectile = this.projectiles[index];
+                        if (projectile && projectile.element) {
+                            projectile.element.remove();
+                        }
+                        this.projectiles.splice(index, 1);
+                    }
                 }
             },
 
